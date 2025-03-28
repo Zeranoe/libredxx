@@ -32,7 +32,7 @@
 #include <usbiodef.h>
 
 struct libredxx_found_device {
-	WCHAR path[512];
+	WCHAR path[256];
 	libredxx_device_id id;
 	libredxx_device_type type;
 };
@@ -94,7 +94,7 @@ libredxx_status libredxx_enumerate_interfaces(HDEVINFO dev_info, const libredxx_
 					device->id.vid = vid;
 					device->id.pid = pid;
 					++device_index;
-					wcscpy_s(device->path, sizeof(device->path), detail->DevicePath);
+					wcscpy_s(device->path, sizeof(device->path) / sizeof(device->path[0]), detail->DevicePath);
 					device->type = filter->type;
 					break;
 				}
