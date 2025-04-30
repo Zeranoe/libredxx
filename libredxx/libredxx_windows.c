@@ -41,6 +41,7 @@ struct libredxx_opened_device {
 	libredxx_found_device found;
 	HANDLE handle;
 	HANDLE d2xx_read_event;
+	size_t d3xx_stream_pipe;
 	bool read_interrupted;
 };
 
@@ -181,6 +182,7 @@ libredxx_status libredxx_open_device(const libredxx_found_device* found, libredx
 	private_opened->found = *found;
 	private_opened->handle = handle;
 	private_opened->d2xx_read_event = NULL;
+	private_opened->d3xx_stream_pipe = 0;
 	private_opened->read_interrupted = false;
 	if (found->type == LIBREDXX_DEVICE_TYPE_D3XX) {
 		libredxx_status status;
@@ -224,6 +226,29 @@ libredxx_status libredxx_get_serial(const libredxx_opened_device* device, libred
 static libredxx_status libredxx_d3xx_abort_pipe(libredxx_opened_device* device, uint8_t pipe)
 {
 	if (!DeviceIoControl(device->handle, 0x00222298, &pipe, sizeof(pipe), NULL, 0, NULL, NULL)) {
+		return LIBREDXX_STATUS_ERROR_SYS;
+	}
+	return LIBREDXX_STATUS_SUCCESS;
+}
+
+static libredxx_status libredxx_d3xx_set_stream_pipe(libredxx_opened_device* device, uint8_t pipe, size_t size)
+{
+	uint8_t* size_bytes = (uint8_t*)&size;
+	uint8_t arg[12] = {
+		0x00,
+		0x00,
+		0x00,
+		0x00,
+		size_bytes[0],
+		size_bytes[1],
+		size_bytes[2],
+		size_bytes[3],
+		pipe,
+		0x00,
+		0x00,
+		0x00
+	};
+	if (!DeviceIoControl(device->handle, 0x0022221C, arg, sizeof(arg), NULL, 0, NULL, NULL)) {
 		return LIBREDXX_STATUS_ERROR_SYS;
 	}
 	return LIBREDXX_STATUS_SUCCESS;
@@ -313,9 +338,16 @@ libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size
 		return LIBREDXX_STATUS_SUCCESS;
 	} else {
 		libredxx_status ret = LIBREDXX_STATUS_SUCCESS;
+		uint8_t read_pipe = 0x82;
+		if (device->d3xx_stream_pipe != *buffer_size) {
+			ret = libredxx_d3xx_set_stream_pipe(device, read_pipe, *buffer_size);
+			if (ret != LIBREDXX_STATUS_SUCCESS) {
+				return ret;
+			}
+			device->d3xx_stream_pipe = *buffer_size;
+		}
 		OVERLAPPED overlapped = {0};
 		overlapped.hEvent = CreateEventW(NULL, true, false, NULL);
-		uint8_t read_pipe = 0x82;
 		if (!DeviceIoControl(device->handle, 0x0022220A, &read_pipe, sizeof(read_pipe), (DWORD*)buffer, (DWORD)*buffer_size, NULL, &overlapped)) {
 			if (GetLastError() != ERROR_IO_PENDING) {
 				ret = LIBREDXX_STATUS_ERROR_SYS;
@@ -359,4 +391,3 @@ libredxx_status libredxx_write(libredxx_opened_device* device, void* buffer, siz
 		return ret;
 	}
 }
-
