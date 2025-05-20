@@ -24,15 +24,15 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define LIBREDXX_FT260_REP_SIZE 64
+#define LIBREDXX_FT260_REPORT_SIZE 64
 
-struct i2c_report_item
+struct libredxx_i2c
 {
-    uint8_t report[LIBREDXX_FT260_REP_SIZE];
-    struct i2c_report_item* next;
+    uint8_t data[LIBREDXX_FT260_REPORT_SIZE];
+    struct libredxx_i2c* next;
 };
 
-struct i2c_report_item* libredxx_ft260_format_write(uint8_t addr, const uint8_t* data, size_t size);
-void libredxx_ft260_free_i2c_items(struct i2c_report_item* item);
+struct libredxx_i2c* libredxx_ft260_format_write(uint8_t addr, const uint8_t* data, size_t size);
+void libredxx_ft260_free_i2c_items(struct libredxx_i2c* item);
 
 #endif //LIBREDXX_LIBREDXX_FT260_H

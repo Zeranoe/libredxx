@@ -20,48 +20,47 @@
  * SOFTWARE.
  */
 #include <stdlib.h>
-#include "libredxx_ft260.h"
-
 #include <stdbool.h>
 #include <string.h>
+#include "libredxx_ft260.h"
 
-#define FT260_I2C_REPORT_WRITE_ID 0xDE
+#define FT260_I2C_WRITE_ID 0xDE
 
 enum
 {
-    FT260_I2C_REPORT_FLAG_NONE = 0x00,
-    FT260_I2C_REPORT_FLAG_START = 0x02,
-    FT260_I2C_REPORT_FLAG_REPEATED_START = 0x03,
-    FT260_I2C_REPORT_FLAG_STOP = 0x04,
+    FT260_I2C_FLAG_NONE = 0x00,
+    FT260_I2C_FLAG_START = 0x02,
+    FT260_I2C_FLAG_REPEATED_START = 0x03,
+    FT260_I2C_FLAG_STOP = 0x04,
 };
 
-#define FT260_I2C_REPORT_WRITE_DATA_SIZE (LIBREDXX_FT260_REP_SIZE - sizeof(struct i2c_report_write))
+#define FT260_I2C_WRITE_DATA_SIZE (LIBREDXX_FT260_REPORT_SIZE - sizeof(struct i2c_write))
 
 #pragma pack(push, 1)
 
-struct i2c_report_header
+struct i2c_header
 {
     uint8_t id;
     uint8_t addr;
     uint8_t flag;
 };
 
-struct i2c_report_write
+struct i2c_write
 {
-    struct i2c_report_header header;
+    struct i2c_header header;
     uint8_t size;
     uint8_t data[];
 };
 
-struct i2c_report_read
+struct i2c_read
 {
-    struct i2c_report_header header;
+    struct i2c_header header;
     uint16_t length;
 };
 
 #pragma pack(pop)
 
-struct i2c_report_item* libredxx_ft260_format_write(const uint8_t addr, const uint8_t* data, const size_t size) {
+struct libredxx_i2c* libredxx_ft260_format_write(const uint8_t addr, const uint8_t* data, const size_t size) {
     if (!data || !size) {
         return NULL;
     }
@@ -71,34 +70,34 @@ struct i2c_report_item* libredxx_ft260_format_write(const uint8_t addr, const ui
         return NULL;
     }
 
-    struct i2c_report_item* head;
-    struct i2c_report_item* cur;
-    size_t offset = 0;
-    while (offset < size)
+    struct libredxx_i2c* head;
+    struct libredxx_i2c* cur;
+    size_t rem_size = size;
+    while (rem_size)
     {
-        struct i2c_report_item* item = malloc(sizeof(struct i2c_report_item));
+        struct libredxx_i2c* item = malloc(sizeof(struct libredxx_i2c));
         if (!item)
         {
             libredxx_ft260_free_i2c_items(head);
             return NULL;
         }
-        const size_t transfer_size = size > FT260_I2C_REPORT_WRITE_DATA_SIZE
-                                         ? FT260_I2C_REPORT_WRITE_DATA_SIZE
-                                         : size;
-        struct i2c_report_write* rep = (struct i2c_report_write*)item->report;
-        rep->header.id = FT260_I2C_REPORT_WRITE_ID;
+        const size_t transfer_size = rem_size > FT260_I2C_WRITE_DATA_SIZE
+                                         ? FT260_I2C_WRITE_DATA_SIZE
+                                         : rem_size;
+        struct i2c_write* rep = (struct i2c_write*)item->data;
+        rep->header.id = FT260_I2C_WRITE_ID;
         rep->header.addr = addr;
         rep->size = transfer_size;
-        memcpy(rep->data, data + offset, transfer_size);
+        memcpy(rep->data, data + (size - rem_size), transfer_size);
 
-        const bool first = offset == 0;
-        offset += transfer_size;
-        const bool last = offset == size;
+        const bool first = rem_size == size;
+        rem_size -= transfer_size;
+        const bool last = rem_size == 0;
 
-        rep->header.flag = FT260_I2C_REPORT_FLAG_NONE;
+        rep->header.flag = FT260_I2C_FLAG_NONE;
         if (first)
         {
-            rep->header.flag |= FT260_I2C_REPORT_FLAG_START;
+            rep->header.flag |= FT260_I2C_FLAG_START;
             head = cur = item;
         }
         else
@@ -106,21 +105,20 @@ struct i2c_report_item* libredxx_ft260_format_write(const uint8_t addr, const ui
             cur->next = item;
             cur = item;
         }
-
         if (last)
         {
-            rep->header.flag |= FT260_I2C_REPORT_FLAG_STOP;
+            rep->header.flag |= FT260_I2C_FLAG_STOP;
         }
     }
     cur->next = NULL;
     return head;
 }
 
-void libredxx_ft260_free_i2c_items(struct i2c_report_item* item)
+void libredxx_ft260_free_i2c_items(struct libredxx_i2c* item)
 {
     while (item)
     {
-        struct i2c_report_item* e = item;
+        struct libredxx_i2c* e = item;
         item = item->next;
         free(e);
     }
