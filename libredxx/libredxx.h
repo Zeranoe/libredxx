@@ -34,6 +34,7 @@ extern "C" {
 enum libredxx_device_type {
 	LIBREDXX_DEVICE_TYPE_D2XX,
 	LIBREDXX_DEVICE_TYPE_D3XX,
+	LIBREDXX_DEVICE_TYPE_FT260,
 };
 typedef enum libredxx_device_type libredxx_device_type;
 

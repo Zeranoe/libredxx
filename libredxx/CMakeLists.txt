@@ -1,13 +1,17 @@
+set(COMMON_SRC
+		libredxx_ft260.c
+)
+
 if(WIN32)
-	add_library(libredxx libredxx_windows.c)
+	add_library(libredxx libredxx_windows.c ${COMMON_SRC})
 	target_link_libraries(libredxx PRIVATE setupapi)
 elseif(APPLE)
-	add_library(libredxx libredxx_darwin.c)
+	add_library(libredxx libredxx_darwin.c ${COMMON_SRC})
 	find_library(IOKIT_FRAMEWORK IOKit REQUIRED)
 	find_library(COREFOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
 	target_link_libraries(libredxx PUBLIC ${IOKIT_FRAMEWORK} ${COREFOUNDATION_FRAMEWORK})
 else()
-	add_library(libredxx libredxx_linux.c)
+	add_library(libredxx libredxx_linux.c ${COMMON_SRC})
 endif()
 
 set_target_properties(libredxx PROPERTIES PUBLIC_HEADER ${CMAKE_CURRENT_SOURCE_DIR}/libredxx.h PREFIX "" POSITION_INDEPENDENT_CODE ON)
