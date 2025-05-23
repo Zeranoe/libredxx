@@ -20,13 +20,18 @@
  * SOFTWARE.
  */
 #include <stdlib.h>
-#include <stdbool.h>
 #include <string.h>
 #include "libredxx_ft260.h"
 
-#define FT260_I2C_WRITE_ID 0xDE
-
+#define FT260_REPORT_SIZE 64
+#define FT260_I2C_WRITE_DATA_SIZE (FT260_REPORT_SIZE - sizeof(struct i2c_write))
 #define FT260_I2C_MAX_ADDR ((1 << 7) - 1)
+
+enum
+{
+    FT260_I2C_READ_ID = 0xC2,
+    FT260_I2C_WRITE_ID = 0xDE,
+};
 
 enum
 {
@@ -36,7 +41,6 @@ enum
     FT260_I2C_FLAG_STOP = 0x04,
 };
 
-#define FT260_I2C_WRITE_DATA_SIZE (LIBREDXX_FT260_REPORT_SIZE - sizeof(struct i2c_write))
 
 #pragma pack(push, 1)
 
@@ -62,61 +66,93 @@ struct i2c_read
 
 #pragma pack(pop)
 
-struct libredxx_i2c* libredxx_ft260_format_write(const uint8_t addr, const uint8_t* data, const size_t size) {
-    if (!data || !size || addr > FT260_I2C_MAX_ADDR) {
-        return NULL;
+libredxx_status libredxx_ft260_i2c_write(libredxx_opened_device* device, const uint8_t addr, uint8_t* ctrl_buffer,
+                                         size_t* ctrl_buffer_size, uint8_t* data_buffer, size_t* data_buffer_size)
+{
+    if (addr > FT260_I2C_MAX_ADDR
+        || (ctrl_buffer && !ctrl_buffer_size)
+        || (!ctrl_buffer && ctrl_buffer_size)
+        || (data_buffer && !data_buffer_size)
+        || (!data_buffer && data_buffer_size))
+    {
+        return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
     }
 
-    struct libredxx_i2c* head;
-    struct libredxx_i2c* tail;
-    size_t rem_size = size;
-    while (rem_size)
+    uint8_t buf[FT260_REPORT_SIZE];
+    struct i2c_write* rep = (struct i2c_write*)buf;
+
+    rep->header.flag = FT260_I2C_FLAG_START;
+
+    size_t rem_ctrl_size = ctrl_buffer_size ? *ctrl_buffer_size : 0;
+    size_t rem_data_size = data_buffer_size ? *data_buffer_size : 0;
+    while (rem_ctrl_size || rem_data_size)
     {
-        struct libredxx_i2c* item = malloc(sizeof(struct libredxx_i2c));
-        if (!item)
+        size_t transfer_size = 0;
+        if (rem_ctrl_size)
         {
-            libredxx_ft260_free_i2c_items(head);
-            return NULL;
+            const size_t ctrl_transfer_size = rem_ctrl_size > FT260_I2C_WRITE_DATA_SIZE
+                                                  ? FT260_I2C_WRITE_DATA_SIZE
+                                                  : rem_ctrl_size;
+            memcpy(rep->data, ctrl_buffer + (*ctrl_buffer_size - rem_ctrl_size), ctrl_transfer_size);
+            rem_ctrl_size -= ctrl_transfer_size;
+            transfer_size += ctrl_transfer_size;
         }
-        const size_t transfer_size = rem_size > FT260_I2C_WRITE_DATA_SIZE
-                                         ? FT260_I2C_WRITE_DATA_SIZE
-                                         : rem_size;
-        struct i2c_write* rep = (struct i2c_write*)item->data;
+        if (rem_data_size)
+        {
+            const size_t rem_transfer_size = FT260_I2C_WRITE_DATA_SIZE - transfer_size;
+            const size_t data_transfer_size = rem_data_size > rem_transfer_size
+                                         ? rem_transfer_size
+                                         : rem_data_size;
+            memcpy(rep->data + transfer_size, data_buffer + (*data_buffer_size - rem_data_size), data_transfer_size);
+            rem_data_size -= data_transfer_size;
+            transfer_size += data_transfer_size;
+        }
         rep->header.id = FT260_I2C_WRITE_ID;
         rep->header.addr = addr;
         rep->size = transfer_size;
-        memcpy(rep->data, data + (size - rem_size), transfer_size);
 
-        const bool first = rem_size == size;
-        rem_size -= transfer_size;
-        const bool last = rem_size == 0;
-
-        rep->header.flag = FT260_I2C_FLAG_NONE;
-        if (first)
-        {
-            rep->header.flag |= FT260_I2C_FLAG_START;
-            head = tail = item;
-        }
-        else
-        {
-            tail->next = item;
-            tail = item;
-        }
-        if (last)
+        if (!rem_ctrl_size && !rem_data_size)
         {
             rep->header.flag |= FT260_I2C_FLAG_STOP;
         }
+
+        size_t buf_size = sizeof(buf);
+        const libredxx_status status = libredxx_write(device, buf, &buf_size);
+        if (status != LIBREDXX_STATUS_SUCCESS)
+        {
+            return status;
+        }
+        memset(buf, 0, sizeof(struct i2c_header));
     }
-    tail->next = NULL;
-    return head;
+    return LIBREDXX_STATUS_SUCCESS;
 }
 
-void libredxx_ft260_free_i2c_items(struct libredxx_i2c* item)
+libredxx_status libredxx_ft260_i2c_read(libredxx_opened_device* device, const uint8_t addr, uint8_t* ctrl_buffer, size_t* ctrl_buffer_size, uint8_t* buffer, size_t* buffer_size)
 {
-    while (item)
+    if (addr > FT260_I2C_MAX_ADDR
+        || (ctrl_buffer && !ctrl_buffer_size)
+        || (!ctrl_buffer && ctrl_buffer_size)
+        || !buffer || !buffer_size || !*buffer_size || *buffer_size > UINT16_MAX)
     {
-        struct libredxx_i2c* e = item;
-        item = item->next;
-        free(e);
+        return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
     }
+    libredxx_status status = libredxx_ft260_i2c_write(device, addr, ctrl_buffer, ctrl_buffer_size, NULL, NULL);
+    if (status != LIBREDXX_STATUS_SUCCESS)
+    {
+        return status;
+    }
+    uint8_t buf[FT260_REPORT_SIZE];
+    struct i2c_read* rep = (struct i2c_read*)buf;
+    rep->header.id = FT260_I2C_READ_ID;
+    rep->header.addr = addr;
+    rep->header.flag = FT260_I2C_FLAG_START | FT260_I2C_FLAG_STOP;
+    rep->length = *buffer_size;
+    size_t buf_size = sizeof(buf);
+    status = libredxx_write(device, buf, &buf_size);
+    if (status != LIBREDXX_STATUS_SUCCESS)
+    {
+        return status;
+    }
+    // TODO clear read messages
+    return libredxx_read(device, buffer, buffer_size);
 }

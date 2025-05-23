@@ -21,18 +21,11 @@
  */
 #ifndef LIBREDXX_LIBREDXX_FT260_H
 #define LIBREDXX_LIBREDXX_FT260_H
-#include <stddef.h>
 #include <stdint.h>
+#include "libredxx.h"
 
-#define LIBREDXX_FT260_REPORT_SIZE 64
-
-struct libredxx_i2c
-{
-    uint8_t data[LIBREDXX_FT260_REPORT_SIZE];
-    struct libredxx_i2c* next;
-};
-
-struct libredxx_i2c* libredxx_ft260_format_write(uint8_t addr, const uint8_t* data, size_t size);
-void libredxx_ft260_free_i2c_items(struct libredxx_i2c* item);
+libredxx_status libredxx_ft260_i2c_write(libredxx_opened_device* device, uint8_t addr, uint8_t* ctrl_buffer,
+                                         size_t* ctrl_buffer_size, uint8_t* data_buffer, size_t* data_buffer_size);
+libredxx_status libredxx_ft260_i2c_read(libredxx_opened_device* device, uint8_t addr, uint8_t* ctrl_buffer, size_t* ctrl_buffer_size, uint8_t* buffer, size_t* buffer_size);
 
 #endif //LIBREDXX_LIBREDXX_FT260_H
