@@ -26,6 +26,8 @@
 
 #define FT260_I2C_WRITE_ID 0xDE
 
+#define FT260_I2C_MAX_ADDR ((1 << 7) - 1)
+
 enum
 {
     FT260_I2C_FLAG_NONE = 0x00,
@@ -61,17 +63,12 @@ struct i2c_read
 #pragma pack(pop)
 
 struct libredxx_i2c* libredxx_ft260_format_write(const uint8_t addr, const uint8_t* data, const size_t size) {
-    if (!data || !size) {
-        return NULL;
-    }
-    if (addr > (1 << 7) - 1)
-    {
-        // addresses must be 7-bit
+    if (!data || !size || addr > FT260_I2C_MAX_ADDR) {
         return NULL;
     }
 
     struct libredxx_i2c* head;
-    struct libredxx_i2c* cur;
+    struct libredxx_i2c* tail;
     size_t rem_size = size;
     while (rem_size)
     {
@@ -98,19 +95,19 @@ struct libredxx_i2c* libredxx_ft260_format_write(const uint8_t addr, const uint8
         if (first)
         {
             rep->header.flag |= FT260_I2C_FLAG_START;
-            head = cur = item;
+            head = tail = item;
         }
         else
         {
-            cur->next = item;
-            cur = item;
+            tail->next = item;
+            tail = item;
         }
         if (last)
         {
             rep->header.flag |= FT260_I2C_FLAG_STOP;
         }
     }
-    cur->next = NULL;
+    tail->next = NULL;
     return head;
 }
 
