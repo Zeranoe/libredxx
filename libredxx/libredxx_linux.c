@@ -191,12 +191,17 @@ libredxx_status libredxx_open_device(const libredxx_found_device* found, libredx
 	}
 	libredxx_opened_device* private_opened = calloc(1, sizeof(libredxx_opened_device));
 	if (!private_opened) {
+		close(handle);
 		return LIBREDXX_STATUS_ERROR_SYS;
 	}
 	private_opened->found = *found;
 	private_opened->handle = handle;
 	if (found->type == LIBREDXX_DEVICE_TYPE_D3XX) {
 		pipe(private_opened->d3xx_pipes);
+	} else {
+		// wMaxPacketSize
+		private_opened->d2xx_rx_buffer = malloc(512);
+		private_opened->d2xx_rx_buffer_size = 512;
 	}
 	*opened = private_opened;
 	return LIBREDXX_STATUS_SUCCESS;
@@ -276,14 +281,9 @@ libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size
 		*buffer_size = urb.actual_length;
 		return LIBREDXX_STATUS_SUCCESS;
 	} else {
-		size_t headered_buffer_size = *buffer_size + D2XX_HEADER_SIZE;
-		if (headered_buffer_size > device->d2xx_rx_buffer_size) {
-			device->d2xx_rx_buffer = realloc(device->d2xx_rx_buffer, headered_buffer_size);
-			device->d2xx_rx_buffer_size = headered_buffer_size;
-		}
 		struct usbdevfs_bulktransfer bulk = {0};
 		bulk.ep = 0x81;
-		bulk.len = headered_buffer_size;
+		bulk.len = device->d2xx_rx_buffer_size;
 		bulk.data = device->d2xx_rx_buffer;
 		device->read_interrupted = false;
 		while (true) {
@@ -291,8 +291,8 @@ libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size
 			if (r == -1) {
 				return LIBREDXX_STATUS_ERROR_SYS;
 			}
-			if (r > 2) {
-				*buffer_size = r - 2;
+			if (r > D2XX_HEADER_SIZE) {
+				*buffer_size = r - D2XX_HEADER_SIZE;
 				memcpy(buffer, &device->d2xx_rx_buffer[2], *buffer_size);
 				return LIBREDXX_STATUS_SUCCESS;
 			}
@@ -300,7 +300,6 @@ libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size
 				return LIBREDXX_STATUS_ERROR_INTERRUPTED;
 			}
 		}
-
 	}
 }
 
