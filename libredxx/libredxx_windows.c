@@ -30,9 +30,11 @@
 #include <setupapi.h>
 #include <initguid.h>
 #include <usbiodef.h>
+#include <devpkey.h>
 
 struct libredxx_found_device {
 	WCHAR path[256];
+	libredxx_serial serial;
 	libredxx_device_id id;
 	libredxx_device_type type;
 };
@@ -44,6 +46,16 @@ struct libredxx_opened_device {
 	size_t d3xx_stream_pipe;
 	bool read_interrupted;
 };
+
+static int32_t find_last_of(const wchar_t* str, uint32_t str_len, wchar_t needle)
+{
+	for (uint32_t i = str_len; i > 0; --i) {
+		if (str[i] == needle) {
+			return i;
+		}
+	}
+	return -1;
+}
 
 libredxx_status libredxx_enumerate_interfaces(HDEVINFO dev_info, const libredxx_find_filter* filters, size_t filters_count, libredxx_found_device*** devices, size_t* devices_count)
 {
@@ -70,7 +82,9 @@ libredxx_status libredxx_enumerate_interfaces(HDEVINFO dev_info, const libredxx_
 			uint8_t detail_buffer[512];
 			SP_DEVICE_INTERFACE_DETAIL_DATA* detail = (SP_DEVICE_INTERFACE_DETAIL_DATA*)detail_buffer;
 			detail->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA);
-			if (!SetupDiGetDeviceInterfaceDetailW(dev_info, &ifd, detail, sizeof(detail_buffer), NULL, NULL)) {
+			SP_DEVINFO_DATA did;
+			did.cbSize = sizeof(did);
+			if (!SetupDiGetDeviceInterfaceDetailW(dev_info, &ifd, detail, sizeof(detail_buffer), NULL, &did)) {
 				return LIBREDXX_STATUS_ERROR_SYS;
 			}
 			wchar_t* vid_start = wcsstr(detail->DevicePath, L"vid_");
@@ -91,12 +105,39 @@ libredxx_status libredxx_enumerate_interfaces(HDEVINFO dev_info, const libredxx_
 				const libredxx_find_filter* filter = &filters[filter_index];
 				if (filter->id.vid == vid && filter->id.pid == pid) {
 					private_devices = realloc(private_devices, sizeof(libredxx_found_device) * (device_index + 1));
-					libredxx_found_device* device = &private_devices[device_index];
+					libredxx_found_device* device = &private_devices[device_index++];
+					memset(device, 0, sizeof(libredxx_found_device));
 					device->id.vid = vid;
 					device->id.pid = pid;
-					++device_index;
 					wcscpy_s(device->path, sizeof(device->path) / sizeof(device->path[0]), detail->DevicePath);
 					device->type = filter->type;
+					if (filter->type == LIBREDXX_DEVICE_TYPE_D3XX) {
+						DEVPROPTYPE ptype;
+						uint8_t prop[256];
+						DWORD prop_size;
+						if (SetupDiGetDevicePropertyW(dev_info, &did, &DEVPKEY_Device_Parent, &ptype, prop, sizeof(prop), &prop_size, 0)) {
+							const wchar_t* parent = (wchar_t*)prop;
+							const uint32_t parent_len = prop_size / sizeof(wchar_t);
+							int32_t serial_offset = find_last_of(parent, parent_len, L'\\');
+							if (serial_offset != -1) {
+								++serial_offset; // move past backslash
+								WideCharToMultiByte(CP_UTF8, 0, &parent[serial_offset], -1, device->serial.serial, sizeof(device->serial.serial), NULL, NULL);
+							}
+						}
+					} else {
+						DEVPROPTYPE ptype;
+						uint8_t prop[256];
+						DWORD prop_size;
+						if (SetupDiGetDevicePropertyW(dev_info, &did, &DEVPKEY_Device_InstanceId, &ptype, prop, sizeof(prop), &prop_size, 0)) {
+							const wchar_t* inst = (wchar_t*)prop;
+							const uint32_t inst_len = prop_size / sizeof(WCHAR);
+							int32_t serial_offset = find_last_of(inst, inst_len, L'\\');
+							if (serial_offset != -1) {
+								++serial_offset; // move past backslash
+								WideCharToMultiByte(CP_UTF8, 0, &inst[serial_offset], -1, device->serial.serial, sizeof(device->serial.serial), NULL, NULL);
+							}
+						}
+					}
 					break;
 				}
 			}
@@ -134,6 +175,12 @@ libredxx_status libredxx_free_found(libredxx_found_device** devices)
 	}
 	free(devices[0]);
 	free(devices);
+	return LIBREDXX_STATUS_SUCCESS;
+}
+
+libredxx_status libredxx_get_serial(const libredxx_found_device* found, libredxx_serial* serial)
+{
+	memcpy(serial->serial, found->serial.serial, sizeof(serial->serial));
 	return LIBREDXX_STATUS_SUCCESS;
 }
 
@@ -208,18 +255,6 @@ libredxx_status libredxx_close_device(libredxx_opened_device* device)
 	CloseHandle(device->handle);
 	device->handle = NULL;
 	free(device);
-	return LIBREDXX_STATUS_SUCCESS;
-}
-
-libredxx_status libredxx_get_serial(const libredxx_opened_device* device, libredxx_serial* serial)
-{
-	uint8_t info[104];
-	DWORD info_size = sizeof(info);
-	if (!DeviceIoControl(device->handle, 0x00222198, info, info_size, info, info_size, &info_size, NULL)) {
-		return LIBREDXX_STATUS_ERROR_SYS;
-	}
-	// TODO: check that info_size is large enough
-	memcpy(serial->serial, &info[24], sizeof(serial->serial));
 	return LIBREDXX_STATUS_SUCCESS;
 }
 

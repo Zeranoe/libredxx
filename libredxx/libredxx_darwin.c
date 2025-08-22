@@ -32,6 +32,7 @@
 // for details: https://developer.apple.com/library/archive/documentation/DeviceDrivers/Conceptual/USBBook/USBDeviceInterfaces/USBDevInterfaces.html
 
 struct libredxx_found_device {
+	libredxx_serial serial;
 	libredxx_device_id id;
 	libredxx_device_type type;
 	uint32_t location;
@@ -75,14 +76,19 @@ libredxx_status libredxx_find_devices(const libredxx_find_filter* filters, size_
 			const libredxx_find_filter* filter = &filters[filter_index];
 			if (vid == filter->id.vid && pid == filter->id.pid) {
 				private_devices = realloc(private_devices, sizeof(libredxx_found_device) * (device_index + 1));
-				libredxx_found_device* device = &private_devices[device_index];
+				libredxx_found_device* device = &private_devices[device_index++];
+				memset(device, 0, sizeof(libredxx_found_device));
 				device->id.vid = vid;
 				device->id.pid = pid;
 				device->type = filter->type;
 
 				(*darwin_device)->GetLocationID(darwin_device, &device->location);
 
-				++device_index;
+				CFTypeRef serial = IORegistryEntryCreateCFProperty(darwin_device_service, CFSTR(kUSBSerialNumberString), kCFAllocatorDefault, 0);
+				if (serial) {
+					CFStringGetCString((CFStringRef)serial, device->serial.serial, sizeof(device->serial.serial), kCFStringEncodingUTF8);
+					CFRelease(serial);
+				}
 				break;
 			}
 		}
@@ -99,10 +105,17 @@ libredxx_status libredxx_find_devices(const libredxx_find_filter* filters, size_
 	}
 	return LIBREDXX_STATUS_SUCCESS;
 }
+
 libredxx_status libredxx_free_found(libredxx_found_device** devices)
 {
 	free(devices[0]);
 	free(devices);
+	return LIBREDXX_STATUS_SUCCESS;
+}
+
+libredxx_status libredxx_get_serial(const libredxx_found_device* found, libredxx_serial* serial)
+{
+	memcpy(serial->serial, found->serial.serial, sizeof(serial->serial));
 	return LIBREDXX_STATUS_SUCCESS;
 }
 
@@ -200,35 +213,6 @@ libredxx_status libredxx_close_device(libredxx_opened_device* device)
 	(*device->device)->Release(device->device);
 	free(device->d2xx_rx_buffer);
 	free(device);
-	return LIBREDXX_STATUS_SUCCESS;
-}
-
-libredxx_status libredxx_get_serial(const libredxx_opened_device* device, libredxx_serial* serial)
-{
-	uint8_t raw[255] = {0};
-	IOUSBDevRequest req = {0};
-	req.bmRequestType = USBmakebmRequestType(kUSBIn, kUSBStandard, kUSBDevice);
-	req.bRequest = kUSBRqGetDescriptor;
-	req.wValue = (kUSBStringDesc << 8) | 3; // serial
-	req.wIndex = 0x0409; // English
-	req.wLength = sizeof(raw);
-	req.pData = raw;
-	IOReturn ret = (*device->device)->DeviceRequest(device->device, &req);
-	if (ret != kIOReturnSuccess) {
-		return LIBREDXX_STATUS_ERROR_SYS;
-	}
-	if (req.wLenDone < 2 /* size (u8) + type (u8) */) {
-		return LIBREDXX_STATUS_ERROR_IO;
-	}
-	if (raw[1] != kUSBStringDesc) {
-		return LIBREDXX_STATUS_ERROR_IO;
-	}
-	// TODO: make sure we have enough room in serial to write this
-	char* out = serial->serial;
-	for (size_t i = 2; i < req.wLenDone; i += 2) {
-		*out++ = raw[i];
-	}
-	*out = '\0';
 	return LIBREDXX_STATUS_SUCCESS;
 }
 

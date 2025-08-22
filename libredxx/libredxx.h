@@ -71,13 +71,14 @@ typedef struct libredxx_opened_device libredxx_opened_device;
 libredxx_status libredxx_find_devices(const libredxx_find_filter* filters, size_t filters_count, libredxx_found_device*** devices, size_t* devices_count);
 libredxx_status libredxx_free_found(libredxx_found_device** devices);
 
+libredxx_status libredxx_get_serial(const libredxx_found_device* found, libredxx_serial* serial);
+
 libredxx_status libredxx_get_device_id(const libredxx_found_device* found, libredxx_device_id* id);
 libredxx_status libredxx_get_device_type(const libredxx_found_device* found, libredxx_device_type* type);
 
 libredxx_status libredxx_open_device(const libredxx_found_device* found, libredxx_opened_device** opened);
 libredxx_status libredxx_close_device(libredxx_opened_device* device);
 
-libredxx_status libredxx_get_serial(const libredxx_opened_device* device, libredxx_serial* serial);
 libredxx_status libredxx_interrupt(libredxx_opened_device* device);
 
 libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size_t* buffer_size);

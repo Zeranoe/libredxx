@@ -35,10 +35,12 @@
 #include <poll.h>
 
 #define USBFS_PATH "/dev/bus/usb"
+#define SYSFS_DEVICES_PATH "/sys/bus/usb/devices"
 #define D2XX_HEADER_SIZE 2
 
 struct libredxx_found_device {
 	char path[512];
+	libredxx_serial serial;
 	libredxx_device_id id;
 	libredxx_device_type type;
 };
@@ -71,53 +73,80 @@ struct usb_descriptor {
 };
 #pragma pack(pop)
 
+static ssize_t libredxx_read_text_file(const char* path, void* buffer, size_t buffer_size)
+{
+	const int fd = open(path, O_RDONLY);
+	if (fd == -1) {
+		return -1;
+	}
+	ssize_t size = read(fd, buffer, buffer_size);
+	close(fd);
+	if (size > 0) {
+		((uint8_t*)buffer)[size - 1] = '\0'; // newline terminated to null terminated
+	}
+	return size;
+}
+
+static const libredxx_find_filter* libredxx_match_filter(uint16_t vid, uint16_t pid, const libredxx_find_filter* filters, size_t filters_count)
+{
+	for (size_t i = 0; i < filters_count; ++i) {
+		const libredxx_find_filter* filter = &filters[i];
+		if (vid == filter->id.vid && pid == filter->id.pid) {
+			return filter;
+		}
+	}
+	return NULL;
+}
+
 libredxx_status libredxx_find_devices(const libredxx_find_filter* filters, size_t filters_count, libredxx_found_device*** devices, size_t* devices_count)
 {
 	libredxx_status status = LIBREDXX_STATUS_SUCCESS;
-	DIR* usb = opendir(USBFS_PATH);
-	struct dirent* bus_entry;
 	size_t device_index = 0;
 	libredxx_found_device* private_devices = NULL;
-	while (status == LIBREDXX_STATUS_SUCCESS && (bus_entry = readdir(usb))) {
-		if (bus_entry->d_name[0] == '.') {
+	DIR* devices_dir = opendir(SYSFS_DEVICES_PATH);
+	if (devices_dir == NULL) {
+		return LIBREDXX_STATUS_ERROR_SYS;
+	}
+	struct dirent* device_entry;
+	while ((device_entry = readdir(devices_dir)) != NULL) {
+		char path[512];
+		snprintf(path, sizeof(path), SYSFS_DEVICES_PATH "/%s/descriptors", device_entry->d_name);
+		int fd;
+		fd = open(path, O_RDONLY);
+		if (fd == -1) {
 			continue;
 		}
-		char bus_path[32];
-		if (snprintf(bus_path, sizeof(bus_path), USBFS_PATH "/%s", bus_entry->d_name) == -1) {
-			status = LIBREDXX_STATUS_ERROR_SYS;
-			break;
+		struct usb_descriptor descriptors = {0};
+		read(fd, &descriptors, sizeof(descriptors));
+		close(fd);
+		const libredxx_find_filter* filter = libredxx_match_filter(descriptors.idVendor, descriptors.idProduct, filters, filters_count);
+		if (filter) {
+			snprintf(path, sizeof(path), SYSFS_DEVICES_PATH "/%s/busnum", device_entry->d_name);
+			char busnum[4];
+			if (libredxx_read_text_file(path, busnum, sizeof(busnum)) == -1) {
+				continue; // this is a warning, the filter matched but we couldn't find the usbfs location
+			}
+
+			snprintf(path, sizeof(path), SYSFS_DEVICES_PATH "/%s/devnum", device_entry->d_name);
+			char devnum[4];
+			if (libredxx_read_text_file(path, devnum, sizeof(devnum)) == -1) {
+				continue; // this is a warning, the filter matched but we couldn't find the usbfs location
+			}
+
+			private_devices = realloc(private_devices, sizeof(libredxx_found_device) * (device_index + 1));
+			libredxx_found_device* private_device = &private_devices[device_index++];
+			memset(private_device, 0, sizeof(libredxx_found_device));
+
+			snprintf(private_device->path, sizeof(private_device->path), USBFS_PATH "/%03d/%03d", atoi(busnum), atoi(devnum));
+
+			private_device->id = filter->id;
+			private_device->type = filter->type;
+
+			snprintf(path, sizeof(path), SYSFS_DEVICES_PATH "/%s/serial", device_entry->d_name);
+			libredxx_read_text_file(path, private_device->serial.serial, sizeof(private_device->serial.serial));
 		}
-		DIR* bus = opendir(bus_path);
-		struct dirent* device_entry;
-		while ((device_entry = readdir(bus))) {
-			if (device_entry->d_name[0] == '.') {
-				continue;
-			}
-			char device_path[32];
-			if (snprintf(device_path, sizeof(device_path), USBFS_PATH "/%s/%s", bus_entry->d_name, device_entry->d_name) == -1) {
-				status = LIBREDXX_STATUS_ERROR_SYS;
-				break;
-			}
-			struct usb_descriptor descriptor = {0};
-			int fd = open(device_path, O_RDONLY);
-			read(fd, &descriptor, sizeof(descriptor));
-			close(fd);
-			for (size_t i = 0; i < filters_count; ++i) {
-				const libredxx_find_filter* filter = &filters[i];
-				if (descriptor.idVendor == filter->id.vid && descriptor.idProduct == filter->id.pid) {
-					private_devices = realloc(private_devices, sizeof(libredxx_found_device) * (device_index + 1));
-					libredxx_found_device* private_device = &private_devices[device_index];
-					private_device->id.vid = descriptor.idVendor;
-					private_device->id.pid = descriptor.idProduct;
-					strcpy(private_device->path, device_path);
-					private_device->type = filter->type;
-					++device_index;
-				}
-			}
-		}
-		closedir(bus);
 	}
-	closedir(usb);
+	closedir(devices_dir);
 	*devices_count = device_index;
 	*devices = NULL;
 	if (*devices_count > 0) {
@@ -133,6 +162,12 @@ libredxx_status libredxx_free_found(libredxx_found_device** devices)
 {
 	free(devices[0]);
 	free(devices);
+	return LIBREDXX_STATUS_SUCCESS;
+}
+
+libredxx_status libredxx_get_serial(const libredxx_found_device* found, libredxx_serial* serial)
+{
+	memcpy(serial->serial, found->serial.serial, sizeof(serial->serial));
 	return LIBREDXX_STATUS_SUCCESS;
 }
 
@@ -178,35 +213,6 @@ libredxx_status libredxx_close_device(libredxx_opened_device* device)
 	}
 	close(device->handle);
 	free(device);
-	return LIBREDXX_STATUS_SUCCESS;
-}
-
-libredxx_status libredxx_get_serial(const libredxx_opened_device* device, libredxx_serial* serial)
-{
-	uint8_t raw[255] = {0};
-	struct usbdevfs_ctrltransfer control = {0};
-	control.bRequestType = USB_DIR_IN;
-	control.bRequest = USB_REQ_GET_DESCRIPTOR;
-	control.wValue = (USB_DT_STRING << 8) | 3; // serial
-	control.wIndex = 0x0409; // English
-	control.wLength = sizeof(raw);
-	control.data = raw;
-	int r = ioctl(device->handle, USBDEVFS_CONTROL, &control);
-	if (r == -1) {
-		return LIBREDXX_STATUS_ERROR_SYS;
-	}
-	if (r < 2 /* size (u8) + type (u8) */) {
-		return LIBREDXX_STATUS_ERROR_IO;
-	}
-	if (raw[1] != USB_DT_STRING) {
-		return LIBREDXX_STATUS_ERROR_IO;
-	}
-	// TODO: make sure we have enough room in serial to write this
-	char* out = serial->serial;
-	for (int i = 2; i < r; i += 2) {
-		*out++ = raw[i];
-	}
-	*out = '\0';
 	return LIBREDXX_STATUS_SUCCESS;
 }
 

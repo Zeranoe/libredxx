@@ -72,15 +72,6 @@ void sleep_ms(uint64_t ms)
 static void opened_device_scope(libredxx_opened_device* opened, char* serial_arg, uint8_t* tx, size_t tx_len)
 {
 	libredxx_status status;
-	libredxx_serial device_serial;
-	status = libredxx_get_serial(opened, &device_serial);
-	if (status != LIBREDXX_STATUS_SUCCESS) {
-		printf("error: unable to get serial: %d\n", status);
-		return;
-	}
-	if (strcmp(device_serial.serial, serial_arg) != 0) {
-		return; // not the desired serial
-	}
 	printf("info: opened target device with serial '%s'\n", serial_arg);
 	// spawn the read thread before writing anything
 	uint8_t rx[64];
@@ -179,6 +170,15 @@ int main(int argc, char** argv)
 		return -1;
 	}
 	for (size_t i = 0; i < found_devices_count; ++i) {
+		libredxx_serial device_serial;
+		status = libredxx_get_serial(found_devices[i], &device_serial);
+		if (status != LIBREDXX_STATUS_SUCCESS) {
+			printf("error: unable to get serial: %d\n", status);
+			continue;
+		}
+		if (strcmp(device_serial.serial, serial_arg) != 0) {
+			continue; // not the desired serial
+		}
 		libredxx_opened_device* opened = NULL;
 		status = libredxx_open_device(found_devices[i], &opened);
 		if (status != LIBREDXX_STATUS_SUCCESS) {
