@@ -117,7 +117,10 @@ libredxx_status libredxx_find_devices(const libredxx_find_filter* filters, size_
 			continue;
 		}
 		struct usb_descriptor descriptors = {0};
-		read(fd, &descriptors, sizeof(descriptors));
+		if (read(fd, &descriptors, sizeof(descriptors)) != sizeof(descriptors)) {
+			close(fd);
+			continue;
+		}
 		close(fd);
 		const libredxx_find_filter* filter = libredxx_match_filter(descriptors.idVendor, descriptors.idProduct, filters, filters_count);
 		if (filter) {
@@ -197,7 +200,11 @@ libredxx_status libredxx_open_device(const libredxx_found_device* found, libredx
 	private_opened->found = *found;
 	private_opened->handle = handle;
 	if (found->type == LIBREDXX_DEVICE_TYPE_D3XX) {
-		pipe(private_opened->d3xx_pipes);
+		if (pipe(private_opened->d3xx_pipes) == -1) {
+			free(private_opened);
+			close(handle);
+			return LIBREDXX_STATUS_ERROR_SYS;
+		}
 	} else {
 		// wMaxPacketSize
 		private_opened->d2xx_rx_buffer = malloc(512);
@@ -226,7 +233,9 @@ libredxx_status libredxx_interrupt(libredxx_opened_device* device)
 	device->read_interrupted = true;
 	if (device->found.type == LIBREDXX_DEVICE_TYPE_D3XX) {
 		uint64_t one = 1;
-		write(device->d3xx_pipes[1], &one, sizeof(one));
+		if (write(device->d3xx_pipes[1], &one, sizeof(one)) != sizeof(one)) {
+			return LIBREDXX_STATUS_ERROR_SYS;
+		}
 	}
 	return LIBREDXX_STATUS_SUCCESS;
 }
