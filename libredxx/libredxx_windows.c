@@ -419,7 +419,7 @@ libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size
 			return LIBREDXX_STATUS_ERROR_SYS;
 		}
 		return LIBREDXX_STATUS_SUCCESS;
-	} else {
+	} else if (device->found.type == LIBREDXX_DEVICE_TYPE_D3XX) {
 		libredxx_status ret = LIBREDXX_STATUS_SUCCESS;
 		uint8_t read_pipe = 0x82;
 		if (device->d3xx_stream_pipe != *buffer_size) {
@@ -446,7 +446,10 @@ libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size
 		CloseHandle(overlapped.hEvent);
 		device->d2xx_read_event = NULL;
 		return ret;
+	} else if (device->found.type == LIBREDXX_DEVICE_TYPE_FT260) {
+			
 	}
+	return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
 }
 
 libredxx_status libredxx_write(libredxx_opened_device* device, void* buffer, size_t* buffer_size)
