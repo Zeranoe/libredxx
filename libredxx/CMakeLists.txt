@@ -23,6 +23,8 @@ target_include_directories(libredxx PUBLIC $<BUILD_INTERFACE:${PROJECT_SOURCE_DI
 
 add_library(libredxx::libredxx ALIAS libredxx)
 
-include(GNUInstallDirs)
-install(TARGETS libredxx EXPORT libredxxConfig ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/libredxx)
-install(EXPORT libredxxConfig DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/libredxx NAMESPACE libredxx::)
+if(NOT LIBREDXX_DISABLE_INSTALL)
+	include(GNUInstallDirs)
+	install(TARGETS libredxx EXPORT libredxxConfig ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/libredxx)
+	install(EXPORT libredxxConfig DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/libredxx NAMESPACE libredxx::)
+endif()
