@@ -104,6 +104,56 @@ libredxx_status libredxx_enumerate_interfaces(HDEVINFO dev_info, const libredxx_
 			for (size_t filter_index = 0; filter_index < filters_count; ++filter_index) {
 				const libredxx_find_filter* filter = &filters[filter_index];
 				if (filter->id.vid == vid && filter->id.pid == pid) {
+					DEVPROPTYPE ptype;
+					DWORD prop_size;
+					wchar_t* serial = NULL;
+
+					wchar_t inst[256];
+					if (!SetupDiGetDevicePropertyW(dev_info, &did, &DEVPKEY_Device_InstanceId, &ptype, (PBYTE)inst, sizeof(inst), &prop_size, 0)) {
+						break;
+					}
+					const uint32_t inst_len = prop_size / sizeof(wchar_t);
+
+					// get the parent, every device should have a parent
+					wchar_t parent[256];
+					if (!SetupDiGetDevicePropertyW(dev_info, &did, &DEVPKEY_Device_Parent, &ptype, (PBYTE)parent, sizeof(parent), &prop_size, 0)) {
+						break;
+					}
+					const uint32_t parent_len = prop_size / sizeof(wchar_t);
+					wchar_t* parent_vid_start = wcsstr(parent, L"VID_");
+					wchar_t* parent_pid_start = wcsstr(parent, L"PID_");
+					if (parent_vid_start && parent_pid_start) {
+						parent_vid_start += 4;
+						parent_pid_start += 4;
+						wchar_t parent_vid_str[5] = {parent_vid_start[0], parent_vid_start[1], parent_vid_start[2], parent_vid_start[3], '\0'};
+						wchar_t parent_pid_str[5] = {parent_pid_start[0], parent_pid_start[1], parent_pid_start[2], parent_pid_start[3], '\0'};
+						uint16_t parent_vid = (uint16_t)wcstol(parent_vid_str, NULL, 16);
+						uint16_t parent_pid = (uint16_t)wcstol(parent_pid_str, NULL, 16);
+						if (parent_vid == vid && parent_pid == pid) {
+							int32_t channel_offset = find_last_of(inst, inst_len, L'&');
+							if (channel_offset == -1) {
+								break; // not a valid multi-channel device with a parent
+							}
+							++channel_offset; // move past &
+							uint16_t channel_number = (uint16_t)wcstol(&inst[channel_offset], NULL, 16);
+							if (channel_number > 0) {
+								break; // TODO: support multi-channel
+							}
+							int32_t serial_offset = find_last_of(parent, parent_len, L'\\');
+							if (serial_offset != -1) {
+								++serial_offset; // move past backslash
+								serial = &parent[serial_offset];
+							}
+						}
+					}
+					if (!serial) {
+						// no serial found in the parent, must be on this interface
+						int32_t serial_offset = find_last_of(inst, inst_len, L'\\');
+						if (serial_offset != -1) {
+							++serial_offset; // move past backslash
+							serial = &inst[serial_offset];
+						}
+					}
 					private_devices = realloc(private_devices, sizeof(libredxx_found_device) * (device_index + 1));
 					libredxx_found_device* device = &private_devices[device_index++];
 					memset(device, 0, sizeof(libredxx_found_device));
@@ -111,32 +161,8 @@ libredxx_status libredxx_enumerate_interfaces(HDEVINFO dev_info, const libredxx_
 					device->id.pid = pid;
 					wcscpy_s(device->path, sizeof(device->path) / sizeof(device->path[0]), detail->DevicePath);
 					device->type = filter->type;
-					if (filter->type == LIBREDXX_DEVICE_TYPE_D3XX) {
-						DEVPROPTYPE ptype;
-						uint8_t prop[256];
-						DWORD prop_size;
-						if (SetupDiGetDevicePropertyW(dev_info, &did, &DEVPKEY_Device_Parent, &ptype, prop, sizeof(prop), &prop_size, 0)) {
-							const wchar_t* parent = (wchar_t*)prop;
-							const uint32_t parent_len = prop_size / sizeof(wchar_t);
-							int32_t serial_offset = find_last_of(parent, parent_len, L'\\');
-							if (serial_offset != -1) {
-								++serial_offset; // move past backslash
-								WideCharToMultiByte(CP_UTF8, 0, &parent[serial_offset], -1, device->serial.serial, sizeof(device->serial.serial), NULL, NULL);
-							}
-						}
-					} else {
-						DEVPROPTYPE ptype;
-						uint8_t prop[256];
-						DWORD prop_size;
-						if (SetupDiGetDevicePropertyW(dev_info, &did, &DEVPKEY_Device_InstanceId, &ptype, prop, sizeof(prop), &prop_size, 0)) {
-							const wchar_t* inst = (wchar_t*)prop;
-							const uint32_t inst_len = prop_size / sizeof(WCHAR);
-							int32_t serial_offset = find_last_of(inst, inst_len, L'\\');
-							if (serial_offset != -1) {
-								++serial_offset; // move past backslash
-								WideCharToMultiByte(CP_UTF8, 0, &inst[serial_offset], -1, device->serial.serial, sizeof(device->serial.serial), NULL, NULL);
-							}
-						}
+					if (serial) {
+						WideCharToMultiByte(CP_UTF8, 0, serial, -1, device->serial.serial, sizeof(device->serial.serial), NULL, NULL);
 					}
 					break;
 				}
