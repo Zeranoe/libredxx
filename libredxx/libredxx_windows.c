@@ -42,7 +42,8 @@ struct libredxx_found_device {
 struct libredxx_opened_device {
 	libredxx_found_device found;
 	HANDLE handle;
-	HANDLE d2xx_read_event;
+	HANDLE read_event;
+	HANDLE write_event;
 	size_t d3xx_stream_pipe;
 	bool read_interrupted;
 };
@@ -243,7 +244,7 @@ static libredxx_status libredxx_d3xx_set_timeout(libredxx_opened_device* device,
 
 libredxx_status libredxx_open_device(const libredxx_found_device* found, libredxx_opened_device** opened)
 {
-	DWORD create_flags = found->type == LIBREDXX_DEVICE_TYPE_D2XX ? 0 : FILE_FLAG_OVERLAPPED | FILE_ATTRIBUTE_NORMAL;
+	DWORD create_flags = FILE_FLAG_OVERLAPPED | FILE_ATTRIBUTE_NORMAL;
 	HANDLE handle = CreateFileW(found->path, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, create_flags, NULL);
 	if (handle == INVALID_HANDLE_VALUE) {
 		return LIBREDXX_STATUS_ERROR_SYS;
@@ -254,7 +255,8 @@ libredxx_status libredxx_open_device(const libredxx_found_device* found, libredx
 	}
 	private_opened->found = *found;
 	private_opened->handle = handle;
-	private_opened->d2xx_read_event = NULL;
+	private_opened->read_event = CreateEventW(NULL, false, false, NULL);
+	private_opened->write_event = CreateEventW(NULL, false, false, NULL);
 	private_opened->d3xx_stream_pipe = 0;
 	private_opened->read_interrupted = false;
 	if (found->type == LIBREDXX_DEVICE_TYPE_D3XX) {
@@ -280,6 +282,8 @@ libredxx_status libredxx_close_device(libredxx_opened_device* device)
 	libredxx_interrupt(device);
 	CloseHandle(device->handle);
 	device->handle = NULL;
+	CloseHandle(device->write_event);
+	CloseHandle(device->read_event);
 	free(device);
 	return LIBREDXX_STATUS_SUCCESS;
 }
@@ -318,9 +322,9 @@ static libredxx_status libredxx_d3xx_set_stream_pipe(libredxx_opened_device* dev
 libredxx_status libredxx_interrupt(libredxx_opened_device* device)
 {
 	device->read_interrupted = true;
-	if (device->found.type == LIBREDXX_DEVICE_TYPE_D2XX) {
-		return SetEvent(device->d2xx_read_event) ? LIBREDXX_STATUS_SUCCESS : LIBREDXX_STATUS_ERROR_SYS;
-	} else {
+	SetEvent(device->read_event);
+	SetEvent(device->write_event);
+	if (device->found.type == LIBREDXX_DEVICE_TYPE_D3XX) {
 		// abort also released the overlapped event
 		libredxx_status status;
 		status = libredxx_d3xx_abort_pipe(device, 0x82);
@@ -330,13 +334,19 @@ libredxx_status libredxx_interrupt(libredxx_opened_device* device)
 		status = libredxx_d3xx_abort_pipe(device, 0x02);
 		return status;
 	}
+	return LIBREDXX_STATUS_SUCCESS;
 }
 
 static libredxx_status libredxx_d2xx_rx_available(libredxx_opened_device* device, size_t* available)
 {
 	DWORD available_dw;
 	DWORD available_dw_size = sizeof(available_dw);
-	if (!DeviceIoControl(device->handle, 0x0022216C, &available_dw, available_dw_size, &available_dw, available_dw_size, &available_dw_size, NULL)) {
+	OVERLAPPED overlapped = {0};
+	if (!DeviceIoControl(device->handle, 0x0022216C, &available_dw, available_dw_size, &available_dw, available_dw_size, &available_dw_size, &overlapped)) {
+		return LIBREDXX_STATUS_ERROR_SYS;
+	}
+	DWORD transferred;
+	if (!GetOverlappedResult(device->handle, &overlapped, &transferred, true)) {
 		return LIBREDXX_STATUS_ERROR_SYS;
 	}
 	*available = available_dw;
@@ -345,10 +355,8 @@ static libredxx_status libredxx_d2xx_rx_available(libredxx_opened_device* device
 
 static libredxx_status libredxx_d2xx_wait_rx(libredxx_opened_device* device, size_t* available)
 {
-	libredxx_status ret = LIBREDXX_STATUS_SUCCESS;
-	device->d2xx_read_event = CreateEventW(NULL, false, false, NULL);
 	uint8_t* device_addr_bytes = (uint8_t*)&device;
-	uint8_t* rx_event_addr_bytes = (uint8_t*)&device->d2xx_read_event;
+	uint8_t* rx_event_addr_bytes = (uint8_t*)&device->read_event;
 	uint8_t req[16] = {
 		device_addr_bytes[0],
 		device_addr_bytes[1],
@@ -367,24 +375,32 @@ static libredxx_status libredxx_d2xx_wait_rx(libredxx_opened_device* device, siz
 		rx_event_addr_bytes[6],
 		rx_event_addr_bytes[7]
 	};
-	if (!DeviceIoControl(device->handle, 0x0022208C, &req, sizeof(req), NULL, 0, NULL, NULL)) {
-		ret = LIBREDXX_STATUS_ERROR_SYS;
-	} else {
-		// Now that the event is registered, we can check if there's any pending data. If we check before registering the event, we could miss the event
-		ret = libredxx_d2xx_rx_available(device, available);
-		if (ret == LIBREDXX_STATUS_SUCCESS && *available == 0) {
-			device->read_interrupted = false;
-			if (WaitForSingleObject(device->d2xx_read_event, INFINITE) != WAIT_OBJECT_0) {
-				ret = LIBREDXX_STATUS_ERROR_SYS;
-			} else if (device->read_interrupted) {
-				ret = LIBREDXX_STATUS_ERROR_INTERRUPTED;
-			} else {
-				ret = libredxx_d2xx_rx_available(device, available);
-			}
+	OVERLAPPED overlapped = {0};
+	if (!DeviceIoControl(device->handle, 0x0022208C, &req, sizeof(req), NULL, 0, NULL, &overlapped)) {
+		if (GetLastError() != ERROR_IO_PENDING) {
+			return LIBREDXX_STATUS_ERROR_SYS;
 		}
 	}
-	device->d2xx_read_event = NULL;
-	CloseHandle(device->d2xx_read_event);
+	DWORD transferred;
+	if (!GetOverlappedResult(device->handle, &overlapped, &transferred, true)) {
+		return LIBREDXX_STATUS_ERROR_SYS;
+	}
+	if (WaitForSingleObject(device->read_event, INFINITE) != WAIT_OBJECT_0) {
+		DWORD le = GetLastError();
+		return LIBREDXX_STATUS_ERROR_SYS;		
+	}
+	// Now that the event is registered, we can check if there's any pending data. If we check before registering the event, we could miss the event
+	libredxx_status ret = libredxx_d2xx_rx_available(device, available);
+	if (ret == LIBREDXX_STATUS_SUCCESS && *available == 0) {
+		device->read_interrupted = false;
+		if (WaitForSingleObject(device->read_event, INFINITE) != WAIT_OBJECT_0) {
+			ret = LIBREDXX_STATUS_ERROR_SYS;
+		} else if (device->read_interrupted) {
+			ret = LIBREDXX_STATUS_ERROR_INTERRUPTED;
+		} else {
+			ret = libredxx_d2xx_rx_available(device, available);
+		}
+	}
 	return ret;
 }
 
@@ -397,9 +413,14 @@ libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size
 		if (status != LIBREDXX_STATUS_SUCCESS) {
 			return status;
 		}
-
+		OVERLAPPED overlapped = {0};
 		*buffer_size = min(available, *buffer_size);
-		if (!ReadFile(device->handle, buffer, (DWORD)*buffer_size, (DWORD*)buffer_size, NULL)) {
+		if (!ReadFile(device->handle, buffer, (DWORD)*buffer_size, (DWORD*)buffer_size, &overlapped)) {
+			if (GetLastError() != ERROR_IO_PENDING) {
+				return LIBREDXX_STATUS_ERROR_SYS;
+			}
+		}
+		if (!GetOverlappedResult(device->handle, &overlapped, (DWORD*)buffer_size, true)) {
 			return LIBREDXX_STATUS_ERROR_SYS;
 		}
 		return LIBREDXX_STATUS_SUCCESS;
@@ -414,7 +435,7 @@ libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size
 			device->d3xx_stream_pipe = *buffer_size;
 		}
 		OVERLAPPED overlapped = {0};
-		overlapped.hEvent = CreateEventW(NULL, true, false, NULL);
+		overlapped.hEvent = device->read_event;
 		if (!DeviceIoControl(device->handle, 0x0022220A, &read_pipe, sizeof(read_pipe), (DWORD*)buffer, (DWORD)*buffer_size, NULL, &overlapped)) {
 			if (GetLastError() != ERROR_IO_PENDING) {
 				ret = LIBREDXX_STATUS_ERROR_SYS;
@@ -427,8 +448,6 @@ libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size
 				*buffer_size = transferred;
 			}
 		}
-		CloseHandle(overlapped.hEvent);
-		device->d2xx_read_event = NULL;
 		return ret;
 	}
 }
@@ -436,25 +455,32 @@ libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size
 libredxx_status libredxx_write(libredxx_opened_device* device, void* buffer, size_t* buffer_size)
 {
 	if (device->found.type == LIBREDXX_DEVICE_TYPE_D2XX) {
-		if (!WriteFile(device->handle, buffer, (DWORD)*buffer_size, (DWORD*)buffer_size, NULL)) {
+		OVERLAPPED overlapped = {0};
+		overlapped.hEvent = device->write_event;
+		if (!WriteFile(device->handle, buffer, (DWORD)*buffer_size, NULL, &overlapped)) {
+			if (GetLastError() != ERROR_IO_PENDING) {
+				return LIBREDXX_STATUS_ERROR_SYS;
+			}
+		}
+		if (!GetOverlappedResult(device->handle, &overlapped, (DWORD*)buffer_size, true)) {
 			return LIBREDXX_STATUS_ERROR_SYS;
+		}
+		if (device->read_interrupted) {
+			return LIBREDXX_STATUS_ERROR_INTERRUPTED;
 		}
 		return LIBREDXX_STATUS_SUCCESS;
 	} else {
-		libredxx_status ret = LIBREDXX_STATUS_SUCCESS;
 		OVERLAPPED overlapped = {0};
-		overlapped.hEvent = CreateEventW(NULL, true, false, NULL);
+		overlapped.hEvent = device->write_event;
 		uint8_t write_pipe = 0x02;
 		if (!DeviceIoControl(device->handle, 0x0022220D, &write_pipe, sizeof(write_pipe), (DWORD*)buffer, (DWORD)*buffer_size, NULL, &overlapped)) {
 			if (GetLastError() != ERROR_IO_PENDING) {
-				ret = LIBREDXX_STATUS_ERROR_SYS;
-			} else {
-				if (!GetOverlappedResult(device->handle, &overlapped, (DWORD*)buffer_size, true)) {
-					ret = LIBREDXX_STATUS_ERROR_SYS;
-				}
+				return LIBREDXX_STATUS_ERROR_SYS;
+			}
+			if (!GetOverlappedResult(device->handle, &overlapped, (DWORD*)buffer_size, true)) {
+				return LIBREDXX_STATUS_ERROR_SYS;
 			}
 		}
-		CloseHandle(overlapped.hEvent);
-		return ret;
+		return LIBREDXX_STATUS_SUCCESS;
 	}
 }
