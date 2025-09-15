@@ -43,6 +43,7 @@ struct libredxx_found_device {
 	libredxx_serial serial;
 	libredxx_device_id id;
 	libredxx_device_type type;
+	uint8_t interface_count;
 };
 
 struct libredxx_opened_device {
@@ -147,6 +148,12 @@ libredxx_status libredxx_find_devices(const libredxx_find_filter* filters, size_
 
 			snprintf(path, sizeof(path), SYSFS_DEVICES_PATH "/%s/serial", device_entry->d_name);
 			libredxx_read_text_file(path, private_device->serial.serial, sizeof(private_device->serial.serial));
+
+			snprintf(path, sizeof(path), SYSFS_DEVICES_PATH "/%s/bNumInterfaces", device_entry->d_name);
+			char interface_count[4] = {0};
+			if (libredxx_read_text_file(path, interface_count, sizeof(interface_count)) != -1) {
+				private_device->interface_count = atoi(interface_count);
+			}
 		}
 	}
 	closedir(devices_dir);
@@ -192,6 +199,12 @@ libredxx_status libredxx_open_device(const libredxx_found_device* found, libredx
 	if (handle == -1) {
 		return LIBREDXX_STATUS_ERROR_SYS;
 	}
+	for (unsigned int i = 0; i < found->interface_count; ++i) {
+		if (ioctl(handle, USBDEVFS_CLAIMINTERFACE, &i) == -1) {
+			close(handle);
+			return LIBREDXX_STATUS_ERROR_SYS;
+		}
+	}
 	libredxx_opened_device* private_opened = calloc(1, sizeof(libredxx_opened_device));
 	if (!private_opened) {
 		close(handle);
@@ -222,6 +235,9 @@ libredxx_status libredxx_close_device(libredxx_opened_device* device)
 		close(device->d3xx_pipes[0]);
 	} else {
 		free(device->d2xx_rx_buffer);
+	}
+	for (unsigned int i = 0; i < device->found.interface_count; ++i) {
+		ioctl(device->handle, USBDEVFS_RELEASEINTERFACE, &i);
 	}
 	close(device->handle);
 	free(device);
