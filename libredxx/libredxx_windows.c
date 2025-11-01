@@ -31,6 +31,7 @@
 #include <initguid.h>
 #include <usbiodef.h>
 #include <devpkey.h>
+#include <hidsdi.h>
 
 struct libredxx_found_device {
 	WCHAR path[256];
@@ -66,7 +67,7 @@ libredxx_status libredxx_enumerate_interfaces(HDEVINFO dev_info, const libredxx_
 {
 	GUID hid_guid;
 	HidD_GetHidGuid(&hid_guid);
-	libredxx_guid_id guids_table[] = {
+	struct libredxx_guid_id guids_table[] = {
 		{LIBREDXX_DEVICE_TYPE_D2XX, {0x219D0508, 0x57A8, 0x4FF5, {0x97, 0xA1, 0xBD, 0x86, 0x58, 0x7C, 0x6C, 0x7E}}},
 		{LIBREDXX_DEVICE_TYPE_D3XX, {0xD1E8FE6A, 0xAB75, 0x4D9E, {0x97, 0xD2, 0x06, 0xFA, 0x22, 0xC7, 0x73, 0x6C}}},
 		{LIBREDXX_DEVICE_TYPE_FT260, hid_guid}
@@ -75,7 +76,7 @@ libredxx_status libredxx_enumerate_interfaces(HDEVINFO dev_info, const libredxx_
 	size_t guids_count = sizeof(guids_table) / sizeof(guids_table[0]);
 	libredxx_found_device* private_devices = NULL;
 	for (size_t guid_index = 0; guid_index < guids_count; ++guid_index) {
-		libredxx_guid_id* guid_entry = &guids_table[guid_index];
+		struct libredxx_guid_id* guid_entry = &guids_table[guid_index];
 		GUID* guid = &guid_entry->guid;
 		DWORD member_index = 0;
 		while (1) {
