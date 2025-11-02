@@ -112,7 +112,9 @@ libredxx_status libredxx_enumerate_interfaces(HDEVINFO dev_info, const libredxx_
 			uint16_t vid = (uint16_t)wcstol(vid_str, NULL, 16);
 			uint16_t pid = (uint16_t)wcstol(pid_str, NULL, 16);
 			for (size_t filter_index = 0; filter_index < filters_count; ++filter_index) {
-				DEVPROPTYPE ptype;
+				const libredxx_find_filter* filter = &filters[filter_index];
+				if (filter->id.vid == vid && filter->id.pid == pid) {
+					DEVPROPTYPE ptype;
 					DWORD prop_size;
 					wchar_t* serial = NULL;
 
@@ -337,7 +339,7 @@ libredxx_status libredxx_interrupt(libredxx_opened_device* device)
 	device->read_interrupted = true;
 	if (device->found.type == LIBREDXX_DEVICE_TYPE_D2XX) {
 		return SetEvent(device->d2xx_read_event) ? LIBREDXX_STATUS_SUCCESS : LIBREDXX_STATUS_ERROR_SYS;
-	} else {
+	} else if (device->found.type == LIBREDXX_DEVICE_TYPE_D3XX) {
 		// abort also released the overlapped event
 		libredxx_status status;
 		status = libredxx_d3xx_abort_pipe(device, 0x82);
@@ -347,6 +349,7 @@ libredxx_status libredxx_interrupt(libredxx_opened_device* device)
 		status = libredxx_d3xx_abort_pipe(device, 0x02);
 		return status;
 	}
+	return LIBREDXX_STATUS_SUCCESS; // TODO FT260?
 }
 
 static libredxx_status libredxx_d2xx_rx_available(libredxx_opened_device* device, size_t* available)
