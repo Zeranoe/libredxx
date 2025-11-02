@@ -4,7 +4,7 @@ set(COMMON_SRC
 
 if(WIN32)
 	add_library(libredxx libredxx_windows.c ${COMMON_SRC})
-	target_link_libraries(libredxx PRIVATE setupapi)
+	target_link_libraries(libredxx PRIVATE setupapi hid)
 elseif(APPLE)
 	add_library(libredxx libredxx_darwin.c ${COMMON_SRC})
 	find_library(IOKIT_FRAMEWORK IOKit REQUIRED)
