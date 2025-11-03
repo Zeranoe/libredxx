@@ -82,7 +82,7 @@ libredxx_status libredxx_enumerate_interfaces(HDEVINFO dev_info, const libredxx_
 		while (1) {
 			SP_DEVICE_INTERFACE_DATA ifd;
 			ifd.cbSize = sizeof(ifd);
-			if (!SetupDiEnumDeviceInterfaces(dev_info, NULL, guid, member_index, &ifd)) {
+			if (!SetupDiEnumDeviceInterfaces(dev_info, NULL, guid, member_index++, &ifd)) {
 				DWORD err = GetLastError();
 				if (err == ERROR_NO_MORE_ITEMS) {
 					break;
@@ -99,12 +99,12 @@ libredxx_status libredxx_enumerate_interfaces(HDEVINFO dev_info, const libredxx_
 			}
 			wchar_t* vid_start = wcsstr(detail->DevicePath, L"vid_");
 			if (!vid_start) {
-				return LIBREDXX_STATUS_ERROR_SYS;
+				continue;
 			}
 			vid_start += 4;
 			wchar_t* pid_start = wcsstr(detail->DevicePath, L"pid_");
 			if (!pid_start) {
-				return LIBREDXX_STATUS_ERROR_SYS;
+				continue;
 			}
 			pid_start += 4;
 			wchar_t vid_str[5] = {vid_start[0], vid_start[1], vid_start[2], vid_start[3], '\0'};
@@ -178,7 +178,6 @@ libredxx_status libredxx_enumerate_interfaces(HDEVINFO dev_info, const libredxx_
 					break;
 				}
 			}
-			++member_index;
 		}
 	}
 	*devices_count = device_index;
