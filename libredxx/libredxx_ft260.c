@@ -66,8 +66,8 @@ struct i2c_read
 
 #pragma pack(pop)
 
-libredxx_status libredxx_ft260_i2c_write(libredxx_opened_device* device, const uint8_t addr, uint8_t* ctrl_buffer,
-                                         size_t* ctrl_buffer_size, uint8_t* data_buffer, size_t* data_buffer_size)
+libredxx_status libredxx_ft260_i2c_write(libredxx_opened_device* device, const uint8_t addr, const uint8_t* ctrl_buffer,
+                                         const size_t* ctrl_buffer_size, const uint8_t* data_buffer, const size_t* data_buffer_size)
 {
     if (addr > FT260_I2C_MAX_ADDR
         || (ctrl_buffer && !ctrl_buffer_size)

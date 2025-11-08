@@ -24,8 +24,8 @@
 #include <stdint.h>
 #include "libredxx.h"
 
-libredxx_status libredxx_ft260_i2c_write(libredxx_opened_device* device, uint8_t addr, uint8_t* ctrl_buffer,
-                                         size_t* ctrl_buffer_size, uint8_t* data_buffer, size_t* data_buffer_size);
+libredxx_status libredxx_ft260_i2c_write(libredxx_opened_device* device, uint8_t addr, const uint8_t* ctrl_buffer,
+                                         const size_t* ctrl_buffer_size, const uint8_t* data_buffer, const size_t* data_buffer_size);
 libredxx_status libredxx_ft260_i2c_read(libredxx_opened_device* device, uint8_t addr, uint8_t* ctrl_buffer, size_t* ctrl_buffer_size, uint8_t* buffer, size_t* buffer_size);
 
 #endif //LIBREDXX_LIBREDXX_FT260_H
