@@ -457,7 +457,7 @@ libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size
 
 libredxx_status libredxx_write(libredxx_opened_device* device, void* buffer, size_t* buffer_size)
 {
-	if (device->found.type == LIBREDXX_DEVICE_TYPE_D2XX) {
+	if (device->found.type == LIBREDXX_DEVICE_TYPE_D2XX || device->found.type == LIBREDXX_DEVICE_TYPE_FT260) {
 		if (!WriteFile(device->handle, buffer, (DWORD)*buffer_size, (DWORD*)buffer_size, NULL)) {
 			return LIBREDXX_STATUS_ERROR_SYS;
 		}
