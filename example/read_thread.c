@@ -119,7 +119,7 @@ static void opened_device_scope(libredxx_opened_device* opened, char* serial_arg
 int main(int argc, char** argv)
 {
 	if (argc != 6) {
-		printf("usage: %s <vid> <pid> <serial> <d2xx | d3xx | ft260> <tx>\n", argv[0]);
+		printf("usage: %s <vid> <pid> <serial> <d2xx | d3xx> <tx>\n", argv[0]);
 		printf("example: %s 0403 601F FT601 d3xx AABBCCDDEEFF\n", argv[0]);
 		return -1;
 	}
@@ -134,10 +134,8 @@ int main(int argc, char** argv)
 		type = LIBREDXX_DEVICE_TYPE_D2XX;
 	} else if (strcmp(type_str, "d3xx") == 0) {
 		type = LIBREDXX_DEVICE_TYPE_D3XX;
-	} else if (strcmp(type_str, "ft260") == 0) {
-		type = LIBREDXX_DEVICE_TYPE_FT260;
 	} else {
-		printf("error: invalid device type, must be \"d2xx\" or \"d3xx\" or \"ft260\"\n");
+		printf("error: invalid device type, must be \"d2xx\" or \"d3xx\"\n");
 		return -1;
 	}
 
