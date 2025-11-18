@@ -24,6 +24,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "libredxx/libredxx.h"
+#include "ft260.h"
 
 #define I2C_MAX_ADDR ((1 << 7) - 1)
 
