@@ -91,7 +91,7 @@ libredxx_status libredxx_close_device(libredxx_opened_device* device);
 libredxx_status libredxx_interrupt(libredxx_opened_device* device);
 
 libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size_t* buffer_size, libredxx_endpoint endpoint);
-libredxx_status libredxx_write(libredxx_opened_device* device, void* buffer, size_t* buffer_size);
+libredxx_status libredxx_write(libredxx_opened_device* device, void* buffer, size_t* buffer_size, libredxx_endpoint endpoint);
 
 #ifdef __cplusplus
 }

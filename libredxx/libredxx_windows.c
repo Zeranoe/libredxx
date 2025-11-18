@@ -454,8 +454,7 @@ libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size
 			return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
 		}
 		if (endpoint == LIBREDXX_ENDPOINT_FEATURE) {
-			if (!HidD_GetFeature(device->handle, buffer,
-			                          LIBREDXX_FT260_REPORT_SIZE)) {
+			if (!HidD_GetFeature(device->handle, buffer, (DWORD)*buffer_size)) {
 				ret = LIBREDXX_STATUS_ERROR_SYS;
 			}
 		} else if (endpoint == LIBREDXX_ENDPOINT_IO) {
@@ -464,7 +463,7 @@ libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size
 			if (!ReadFile(device->handle, buffer, (DWORD)*buffer_size, (DWORD*)buffer_size, &overlapped)) {
 				if (GetLastError() != ERROR_IO_PENDING) {
 					ret = LIBREDXX_STATUS_ERROR_SYS;
-				} else if (!GetOverlappedResult(device->handle, &overlapped, (DWORD*)buffer_size, TRUE)) {
+				} else if (!GetOverlappedResult(device->handle, &overlapped, (DWORD*)buffer_size, true)) {
 					ret = LIBREDXX_STATUS_ERROR_SYS;
 				}
 			}
@@ -481,15 +480,16 @@ libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size
 	return ret;
 }
 
-libredxx_status libredxx_write(libredxx_opened_device* device, void* buffer, size_t* buffer_size)
+libredxx_status libredxx_write(libredxx_opened_device* device, void* buffer, size_t* buffer_size, libredxx_endpoint endpoint)
 {
+	BYTE* bBuffer = (BYTE*)buffer;
+	libredxx_status ret = LIBREDXX_STATUS_SUCCESS;
+
 	if (device->found.type == LIBREDXX_DEVICE_TYPE_D2XX) {
 		if (!WriteFile(device->handle, buffer, (DWORD)*buffer_size, (DWORD*)buffer_size, NULL)) {
-			return LIBREDXX_STATUS_ERROR_SYS;
+			ret = LIBREDXX_STATUS_ERROR_SYS;
 		}
-		return LIBREDXX_STATUS_SUCCESS;
 	} else if (device->found.type == LIBREDXX_DEVICE_TYPE_D3XX) {
-		libredxx_status ret = LIBREDXX_STATUS_SUCCESS;
 		OVERLAPPED overlapped = {0};
 		overlapped.hEvent = CreateEventW(NULL, true, false, NULL);
 		uint8_t write_pipe = 0x02;
@@ -503,6 +503,30 @@ libredxx_status libredxx_write(libredxx_opened_device* device, void* buffer, siz
 			}
 		}
 		CloseHandle(overlapped.hEvent);
-		return ret;
+	} else if (device->found.type == LIBREDXX_DEVICE_TYPE_FT260) {
+		BYTE report_id = bBuffer[0];
+		if (!report_id || *buffer_size != LIBREDXX_FT260_REPORT_SIZE) {
+			return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
+		}
+		if (endpoint == LIBREDXX_ENDPOINT_FEATURE) {
+			if (!HidD_SetFeature(device->handle, buffer, (DWORD)*buffer_size)) {
+				ret = LIBREDXX_STATUS_ERROR_SYS;
+			}
+		} else if (endpoint == LIBREDXX_ENDPOINT_IO) {
+			OVERLAPPED overlapped = {0};
+			overlapped.hEvent = CreateEventW(NULL, true, false, NULL);
+			if (!WriteFile(device->handle, buffer, (DWORD)*buffer_size, (DWORD*)buffer_size, &overlapped)) {
+				if (GetLastError() != ERROR_IO_PENDING) {
+					ret = LIBREDXX_STATUS_ERROR_SYS;
+				} else if (!GetOverlappedResult(device->handle, &overlapped, (DWORD*)buffer_size, true)) {
+					ret = LIBREDXX_STATUS_ERROR_SYS;
+				}
+			}
+		} else {
+			ret = LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
+		}
+	} else {
+		ret = LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
 	}
+	return ret;
 }
