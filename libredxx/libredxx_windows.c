@@ -407,8 +407,9 @@ static libredxx_status libredxx_d2xx_wait_rx(libredxx_opened_device* device, siz
 	return ret;
 }
 
-libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size_t* buffer_size)
+libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size_t* buffer_size, libredxx_endpoint endpoint)
 {
+	BYTE* bBuffer = (BYTE*)buffer;
 	if (device->found.type == LIBREDXX_DEVICE_TYPE_D2XX) {
 		libredxx_status status;
 		size_t available;
@@ -450,7 +451,34 @@ libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size
 		device->d2xx_read_event = NULL;
 		return ret;
 	} else if (device->found.type == LIBREDXX_DEVICE_TYPE_FT260) {
-			
+		BYTE report_id = bBuffer[0];
+		if (!report_id || *buffer_size != LIBREDXX_FT260_REPORT_SIZE) {
+			return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
+		}
+		if (endpoint == LIBREDXX_ENDPOINT_FEATURE) {
+			if (!HidD_GetFeature(device->handle, buffer,
+			                          LIBREDXX_FT260_REPORT_SIZE)) {
+				return LIBREDXX_STATUS_ERROR_SYS;
+			}
+		}
+		if (endpoint == LIBREDXX_ENDPOINT_IO) {
+			OVERLAPPED overlapped = {0};
+			overlapped.hEvent = CreateEventW(NULL, true, false, NULL);
+			if (!ReadFile(device->handle, buffer, (DWORD)*buffer_size, (DWORD*)buffer_size, &overlapped)) {
+				if (GetLastError() != ERROR_IO_PENDING) {
+					return LIBREDXX_STATUS_ERROR_SYS;
+				}
+				if (!GetOverlappedResult(device->handle, &overlapped, (DWORD*)buffer_size, TRUE)) {
+					return LIBREDXX_STATUS_ERROR_SYS;
+				}
+			}
+			if (bBuffer[0] != report_id) {
+				// all reads should be triggered be synchronized with a read request report
+				// this could be interrupted by GPIO interrupt (unsupported)
+				return LIBREDXX_STATUS_ERROR_IO;
+			}
+		}
+		return LIBREDXX_STATUS_SUCCESS;
 	}
 	return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
 }

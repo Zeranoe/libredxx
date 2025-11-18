@@ -31,6 +31,8 @@
 extern "C" {
 #endif
 
+#define LIBREDXX_FT260_REPORT_SIZE 64
+
 enum libredxx_device_type {
 	LIBREDXX_DEVICE_TYPE_D2XX,
 	LIBREDXX_DEVICE_TYPE_D3XX,
@@ -65,6 +67,12 @@ enum libredxx_status {
 };
 typedef enum libredxx_status libredxx_status;
 
+enum libredxx_endpoint {
+	LIBREDXX_ENDPOINT_FEATURE,
+	LIBREDXX_ENDPOINT_IO,
+};
+typedef enum libredxx_endpoint libredxx_endpoint;
+
 typedef struct libredxx_found_device libredxx_found_device;
 
 typedef struct libredxx_opened_device libredxx_opened_device;
@@ -82,7 +90,7 @@ libredxx_status libredxx_close_device(libredxx_opened_device* device);
 
 libredxx_status libredxx_interrupt(libredxx_opened_device* device);
 
-libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size_t* buffer_size);
+libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size_t* buffer_size, libredxx_endpoint endpoint);
 libredxx_status libredxx_write(libredxx_opened_device* device, void* buffer, size_t* buffer_size);
 
 #ifdef __cplusplus
