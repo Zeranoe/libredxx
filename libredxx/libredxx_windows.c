@@ -253,7 +253,7 @@ static libredxx_status libredxx_d3xx_set_timeout(libredxx_opened_device* device,
 
 libredxx_status libredxx_open_device(const libredxx_found_device* found, libredxx_opened_device** opened)
 {
-	DWORD create_flags = found->type == LIBREDXX_DEVICE_TYPE_D2XX || found->type == LIBREDXX_DEVICE_TYPE_FT260
+	DWORD create_flags = found->type == LIBREDXX_DEVICE_TYPE_D2XX
 		                     ? 0
 		                     : FILE_FLAG_OVERLAPPED | FILE_ATTRIBUTE_NORMAL;
 	HANDLE handle = CreateFileW(found->path, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, create_flags, NULL);
@@ -347,8 +347,13 @@ libredxx_status libredxx_interrupt(libredxx_opened_device* device)
 		}
 		status = libredxx_d3xx_abort_pipe(device, 0x02);
 		return status;
+	} else if (device->found.type == LIBREDXX_DEVICE_TYPE_FT260) {
+		if (!CancelIoEx(device->handle, NULL)) {
+			// Fallback if CancelIoEx fails or not supported (though expected on modern Windows)
+			CancelIo(device->handle);
+		}
 	}
-	return LIBREDXX_STATUS_SUCCESS; // TODO FT260?
+	return LIBREDXX_STATUS_SUCCESS;
 }
 
 static libredxx_status libredxx_d2xx_rx_available(libredxx_opened_device* device, size_t* available)
@@ -464,7 +469,7 @@ libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size
 				if (GetLastError() != ERROR_IO_PENDING) {
 					ret = LIBREDXX_STATUS_ERROR_SYS;
 				} else if (!GetOverlappedResult(device->handle, &overlapped, (DWORD*)buffer_size, true)) {
-					ret = LIBREDXX_STATUS_ERROR_SYS;
+					ret = (GetLastError() == ERROR_OPERATION_ABORTED && device->read_interrupted) ? LIBREDXX_STATUS_ERROR_INTERRUPTED : LIBREDXX_STATUS_ERROR_SYS;
 				}
 			}
 			if (ret == LIBREDXX_STATUS_SUCCESS && bBuffer[0] != report_id) {
@@ -519,7 +524,7 @@ libredxx_status libredxx_write(libredxx_opened_device* device, void* buffer, siz
 				if (GetLastError() != ERROR_IO_PENDING) {
 					ret = LIBREDXX_STATUS_ERROR_SYS;
 				} else if (!GetOverlappedResult(device->handle, &overlapped, (DWORD*)buffer_size, true)) {
-					ret = LIBREDXX_STATUS_ERROR_SYS;
+					ret = (GetLastError() == ERROR_OPERATION_ABORTED && device->read_interrupted) ? LIBREDXX_STATUS_ERROR_INTERRUPTED : LIBREDXX_STATUS_ERROR_SYS;
 				}
 			}
 		} else {
