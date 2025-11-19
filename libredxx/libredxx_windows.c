@@ -472,11 +472,6 @@ libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size
 					ret = (GetLastError() == ERROR_OPERATION_ABORTED && device->read_interrupted) ? LIBREDXX_STATUS_ERROR_INTERRUPTED : LIBREDXX_STATUS_ERROR_SYS;
 				}
 			}
-			if (ret == LIBREDXX_STATUS_SUCCESS && bBuffer[0] != report_id) {
-				// all reads should be triggered be synchronized with a read request report
-				// this could be interrupted by GPIO interrupt (unsupported)
-				ret = LIBREDXX_STATUS_ERROR_IO;
-			}
 			CloseHandle(overlapped.hEvent);
 		}
 	} else {
@@ -524,7 +519,7 @@ libredxx_status libredxx_write(libredxx_opened_device* device, void* buffer, siz
 				if (GetLastError() != ERROR_IO_PENDING) {
 					ret = LIBREDXX_STATUS_ERROR_SYS;
 				} else if (!GetOverlappedResult(device->handle, &overlapped, (DWORD*)buffer_size, true)) {
-					ret = (GetLastError() == ERROR_OPERATION_ABORTED && device->read_interrupted) ? LIBREDXX_STATUS_ERROR_INTERRUPTED : LIBREDXX_STATUS_ERROR_SYS;
+					ret = LIBREDXX_STATUS_ERROR_SYS;
 				}
 			}
 		} else {
