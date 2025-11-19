@@ -7,7 +7,7 @@ is a library for communicating with FTDI devices.
 
 - lightweight: no hidden threads or dependencies
 - cross-platform: supports Windows, Linux, and macOS
-- full-featured: supports D2XX and D3XX devices
+- full-featured: supports D2XX, D3XX, and FT260 devices
 - open-source: auditable code that builds anywhere
 
 ## Documentation
