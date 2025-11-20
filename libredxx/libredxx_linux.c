@@ -38,6 +38,11 @@
 #define SYSFS_DEVICES_PATH "/sys/bus/usb/devices"
 #define D2XX_HEADER_SIZE 2
 
+// Hardcoded FT260 HID interface and endpoint addresses (per typical FTDI FT260 firmware)
+#define LIBREDXX_FT260_ENDPOINT_IN  0x81
+#define LIBREDXX_FT260_ENDPOINT_OUT 0x02
+#define LIBREDXX_FT260_INTERFACE    0
+
 struct libredxx_found_device {
 	char path[512];
 	libredxx_serial serial;
@@ -202,11 +207,30 @@ libredxx_status libredxx_open_device(const libredxx_found_device* found, libredx
 	if (handle == -1) {
 		return LIBREDXX_STATUS_ERROR_SYS;
 	}
-	for (unsigned int i = 0; i < found->interface_count; ++i) {
-		if (ioctl(handle, USBDEVFS_CLAIMINTERFACE, &i) == -1) {
-			close(handle);
-			return LIBREDXX_STATUS_ERROR_SYS;
+	bool claimed = false;
+	if (found->type == LIBREDXX_DEVICE_TYPE_FT260) {
+		// detach kernel HID driver if attached
+		struct usbdevfs_getdriver gd = {0};
+		gd.interface = LIBREDXX_FT260_INTERFACE;
+		if (ioctl(handle, USBDEVFS_GETDRIVER, &gd) == 0) {
+			struct usbdevfs_disconnect_claim dc = {0};
+			dc.interface = LIBREDXX_FT260_INTERFACE;
+			strncpy(dc.driver, "libredxx", sizeof(dc.driver) - 1);
+			if (ioctl(handle, USBDEVFS_DISCONNECT_CLAIM, &dc) == -1) {
+				close(handle);
+				return LIBREDXX_STATUS_ERROR_SYS; // per requirement: fail if detach fails
+			}
+			claimed = true;
 		}
+	}
+	if (!claimed) {
+		for (unsigned int i = 0; i < found->interface_count; ++i) {
+			if (ioctl(handle, USBDEVFS_CLAIMINTERFACE, &i) == -1) {
+				close(handle);
+				return LIBREDXX_STATUS_ERROR_SYS;
+			}
+		}
+		claimed = true;
 	}
 	libredxx_opened_device* private_opened = calloc(1, sizeof(libredxx_opened_device));
 	if (!private_opened) {
@@ -221,7 +245,7 @@ libredxx_status libredxx_open_device(const libredxx_found_device* found, libredx
 			close(handle);
 			return LIBREDXX_STATUS_ERROR_SYS;
 		}
-	} else {
+	} else if (found->type == LIBREDXX_DEVICE_TYPE_D2XX) {
 		// wMaxPacketSize
 		private_opened->d2xx_rx_buffer = malloc(512);
 		private_opened->d2xx_rx_buffer_size = 512;
