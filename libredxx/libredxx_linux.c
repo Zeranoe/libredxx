@@ -333,10 +333,26 @@ libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size
 
 libredxx_status libredxx_write(libredxx_opened_device* device, void* buffer, size_t* buffer_size, libredxx_endpoint endpoint)
 {
-	struct usbdevfs_bulktransfer bulk = {0};
-	bulk.ep = 0x02;
-	bulk.len = *buffer_size;
-	bulk.data = buffer;
-	int r = ioctl(device->handle, USBDEVFS_BULK, &bulk);
-	return r == -1 ? LIBREDXX_STATUS_ERROR_SYS : LIBREDXX_STATUS_SUCCESS;
+	libredxx_status ret = LIBREDXX_STATUS_SUCCESS;
+	if (device->found.type == LIBREDXX_DEVICE_TYPE_D2XX || device->found.type == LIBREDXX_DEVICE_TYPE_D3XX) {
+		struct usbdevfs_bulktransfer bulk = {0};
+		bulk.ep = 0x02;
+		bulk.len = *buffer_size;
+		bulk.data = buffer;
+		int r = ioctl(device->handle, USBDEVFS_BULK, &bulk);
+		if (-1 == ioctl(device->handle, USBDEVFS_BULK, &bulk)) {
+			ret = LIBREDXX_STATUS_ERROR_SYS;
+		}
+	} else if (device->found.type == LIBREDXX_DEVICE_TYPE_FT260) {
+		if (endpoint == LIBREDXX_ENDPOINT_FEATURE) {
+			// TODO
+		} else if (endpoint == LIBREDXX_ENDPOINT_IO) {
+			// TODO
+		} else {
+			ret = LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
+		}
+	} else {
+		ret = LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
+	}
+	return ret;
 }
