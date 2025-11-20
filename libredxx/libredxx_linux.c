@@ -110,6 +110,9 @@ libredxx_status libredxx_find_devices(const libredxx_find_filter* filters, size_
 	}
 	struct dirent* device_entry;
 	while ((device_entry = readdir(devices_dir)) != NULL) {
+		if (strcmp(device_entry->d_name, ".") == 0 || strcmp(device_entry->d_name, "..") == 0) {
+			continue;
+		}
 		char path[512];
 		snprintf(path, sizeof(path), SYSFS_DEVICES_PATH "/%s/descriptors", device_entry->d_name);
 		int fd;
@@ -267,7 +270,7 @@ static libredxx_status libredxx_d3xx_trigger_read(libredxx_opened_device* device
 	return ioctl(device->handle, USBDEVFS_BULK, &bulk) == -1 ? LIBREDXX_STATUS_ERROR_SYS : LIBREDXX_STATUS_SUCCESS;
 }
 
-libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size_t* buffer_size)
+libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size_t* buffer_size, libredxx_endpoint endpoint)
 {
 	libredxx_status status;
 	if (device->found.type == LIBREDXX_DEVICE_TYPE_D3XX) {
@@ -328,7 +331,7 @@ libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size
 	}
 }
 
-libredxx_status libredxx_write(libredxx_opened_device* device, void* buffer, size_t* buffer_size)
+libredxx_status libredxx_write(libredxx_opened_device* device, void* buffer, size_t* buffer_size, libredxx_endpoint endpoint)
 {
 	struct usbdevfs_bulktransfer bulk = {0};
 	bulk.ep = 0x02;
