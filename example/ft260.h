@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2025 Kyle Schwarz <zeranoe@gmail.com>
+ * Copyright (c) 2025 Kyle Schwarz <zeranoe@gmail.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -39,72 +39,88 @@
  */
 
 PACK(struct libredxx_ft260_feature_out_report {
-	uint8_t report_id;
 	union {
 		struct {
-			uint8_t request;
-			uint8_t clk_ctl;
-			uint8_t reserved[61];
-		} system_clock;
-		struct {
-			uint8_t request;
-			uint8_t function;
-			uint8_t reserved[61];
-		} gpio_function;
-		struct {
-			uint8_t request;
-			uint8_t speed_lsb;
-			uint8_t speed_msb;
-			uint8_t reserved[60];
-		} i2c_clock_speed;
-		struct {
-			uint8_t gpio_val;
-			uint8_t gpio_dir;
-			uint8_t gpio_val_ex;
-			uint8_t gpio_dir_ex;
-			uint8_t reserved[59];
-		} gpio_write;
+			uint8_t report_id;
+			union {
+				struct {
+					uint8_t request;
+					uint8_t clk_ctl;
+				} system_clock;
+				struct {
+					uint8_t request;
+					uint8_t function;
+				} gpio_function;
+				struct {
+					uint8_t request;
+					uint8_t speed_lsb;
+					uint8_t speed_msb;
+				} i2c_clock_speed;
+				struct {
+					uint8_t gpio_val;
+					uint8_t gpio_dir;
+					uint8_t gpio_val_ex;
+					uint8_t gpio_dir_ex;
+				} gpio_write;
+			};
+		};
+		uint8_t bytes[64];
 	};
 });
 
 PACK(struct libredxx_ft260_feature_in_report {
-	uint8_t report_id;
 	union {
 		struct {
-			uint8_t gpio_val;
-			uint8_t gpio_dir;
-			uint8_t gpio_val_ex;
-			uint8_t gpio_dir_ex;
-			uint8_t reserved[59];
-		} gpio_read;
+			uint8_t report_id;
+			union {
+				struct {
+					uint8_t gpio_val;
+					uint8_t gpio_dir;
+					uint8_t gpio_val_ex;
+					uint8_t gpio_dir_ex;
+					uint8_t reserved[59];
+				} gpio_read;
+			};
+		};
+		uint8_t bytes[64];
 	};
 });
 
 PACK(struct libredxx_ft260_output_report {
-	uint8_t report_id;
 	union {
 		struct {
-			uint8_t slave_addr;
-			uint8_t flags;
-			uint8_t length;
-			uint8_t data[60];
-		} i2c_write_request;
-		struct {
-			uint8_t slave_addr;
-			uint8_t flags;
-			uint16_t length;
-			uint8_t reserved[59];
-		} i2c_read_request;
+			uint8_t report_id;
+			union {
+				struct {
+					uint8_t slave_addr;
+					uint8_t flags;
+					uint8_t length;
+					uint8_t data[60];
+				} i2c_write_request;
+				struct {
+					uint8_t slave_addr;
+					uint8_t flags;
+					uint16_t length;
+					uint8_t reserved[59];
+				} i2c_read_request;
+			};
+		};
+		uint8_t bytes[64];
 	};
 });
 
 PACK(struct libredxx_ft260_input_report {
-	uint8_t report_id;
 	union {
 		struct {
-			uint8_t length;
-			uint8_t data[62];
-		} i2c_read;
+			uint8_t report_id;
+			union {
+				struct {
+					uint8_t length;
+					uint8_t data[62];
+				} i2c_read;
+			};
+		};
+		uint8_t bytes[64];
 	};
 });
 
