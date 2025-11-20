@@ -336,24 +336,25 @@ static libredxx_status libredxx_d3xx_set_stream_pipe(libredxx_opened_device* dev
 libredxx_status libredxx_interrupt(libredxx_opened_device* device)
 {
 	device->read_interrupted = true;
+	libredxx_status status = LIBREDXX_STATUS_SUCCESS;
+
 	if (device->found.type == LIBREDXX_DEVICE_TYPE_D2XX) {
-		return SetEvent(device->d2xx_read_event) ? LIBREDXX_STATUS_SUCCESS : LIBREDXX_STATUS_ERROR_SYS;
+		if (!SetEvent(device->d2xx_read_event)) {
+			status = LIBREDXX_STATUS_ERROR_SYS;
+		}
 	} else if (device->found.type == LIBREDXX_DEVICE_TYPE_D3XX) {
 		// abort also released the overlapped event
-		libredxx_status status;
 		status = libredxx_d3xx_abort_pipe(device, 0x82);
 		if (status != LIBREDXX_STATUS_SUCCESS) {
 			return status;
 		}
 		status = libredxx_d3xx_abort_pipe(device, 0x02);
-		return status;
 	} else if (device->found.type == LIBREDXX_DEVICE_TYPE_FT260) {
 		if (!CancelIoEx(device->handle, NULL)) {
-			// Fallback if CancelIoEx fails or not supported (though expected on modern Windows)
-			CancelIo(device->handle);
+			status = LIBREDXX_STATUS_ERROR_SYS;
 		}
 	}
-	return LIBREDXX_STATUS_SUCCESS;
+	return status;
 }
 
 static libredxx_status libredxx_d2xx_rx_available(libredxx_opened_device* device, size_t* available)

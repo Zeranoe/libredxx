@@ -38,6 +38,11 @@
 #define SYSFS_DEVICES_PATH "/sys/bus/usb/devices"
 #define D2XX_HEADER_SIZE 2
 
+// Hardcoded FT260 HID interface and endpoint addresses (per typical FTDI FT260 firmware)
+#define LIBREDXX_FT260_ENDPOINT_IN  0x81
+#define LIBREDXX_FT260_ENDPOINT_OUT 0x02
+#define LIBREDXX_FT260_INTERFACE    0
+
 struct libredxx_found_device {
 	char path[512];
 	libredxx_serial serial;
@@ -110,6 +115,9 @@ libredxx_status libredxx_find_devices(const libredxx_find_filter* filters, size_
 	}
 	struct dirent* device_entry;
 	while ((device_entry = readdir(devices_dir)) != NULL) {
+		if (strcmp(device_entry->d_name, ".") == 0 || strcmp(device_entry->d_name, "..") == 0) {
+			continue;
+		}
 		char path[512];
 		snprintf(path, sizeof(path), SYSFS_DEVICES_PATH "/%s/descriptors", device_entry->d_name);
 		int fd;
@@ -199,11 +207,30 @@ libredxx_status libredxx_open_device(const libredxx_found_device* found, libredx
 	if (handle == -1) {
 		return LIBREDXX_STATUS_ERROR_SYS;
 	}
-	for (unsigned int i = 0; i < found->interface_count; ++i) {
-		if (ioctl(handle, USBDEVFS_CLAIMINTERFACE, &i) == -1) {
-			close(handle);
-			return LIBREDXX_STATUS_ERROR_SYS;
+	bool claimed = false;
+	if (found->type == LIBREDXX_DEVICE_TYPE_FT260) {
+		// detach kernel HID driver if attached
+		struct usbdevfs_getdriver gd = {0};
+		gd.interface = LIBREDXX_FT260_INTERFACE;
+		if (ioctl(handle, USBDEVFS_GETDRIVER, &gd) == 0) {
+			struct usbdevfs_disconnect_claim dc = {0};
+			dc.interface = LIBREDXX_FT260_INTERFACE;
+			strncpy(dc.driver, "libredxx", sizeof(dc.driver) - 1);
+			if (ioctl(handle, USBDEVFS_DISCONNECT_CLAIM, &dc) == -1) {
+				close(handle);
+				return LIBREDXX_STATUS_ERROR_SYS; // per requirement: fail if detach fails
+			}
+			claimed = true;
 		}
+	}
+	if (!claimed) {
+		for (unsigned int i = 0; i < found->interface_count; ++i) {
+			if (ioctl(handle, USBDEVFS_CLAIMINTERFACE, &i) == -1) {
+				close(handle);
+				return LIBREDXX_STATUS_ERROR_SYS;
+			}
+		}
+		claimed = true;
 	}
 	libredxx_opened_device* private_opened = calloc(1, sizeof(libredxx_opened_device));
 	if (!private_opened) {
@@ -218,7 +245,7 @@ libredxx_status libredxx_open_device(const libredxx_found_device* found, libredx
 			close(handle);
 			return LIBREDXX_STATUS_ERROR_SYS;
 		}
-	} else {
+	} else if (found->type == LIBREDXX_DEVICE_TYPE_D2XX) {
 		// wMaxPacketSize
 		private_opened->d2xx_rx_buffer = malloc(512);
 		private_opened->d2xx_rx_buffer_size = 512;
@@ -267,7 +294,7 @@ static libredxx_status libredxx_d3xx_trigger_read(libredxx_opened_device* device
 	return ioctl(device->handle, USBDEVFS_BULK, &bulk) == -1 ? LIBREDXX_STATUS_ERROR_SYS : LIBREDXX_STATUS_SUCCESS;
 }
 
-libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size_t* buffer_size)
+libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size_t* buffer_size, libredxx_endpoint endpoint)
 {
 	libredxx_status status;
 	if (device->found.type == LIBREDXX_DEVICE_TYPE_D3XX) {
@@ -328,12 +355,28 @@ libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size
 	}
 }
 
-libredxx_status libredxx_write(libredxx_opened_device* device, void* buffer, size_t* buffer_size)
+libredxx_status libredxx_write(libredxx_opened_device* device, void* buffer, size_t* buffer_size, libredxx_endpoint endpoint)
 {
-	struct usbdevfs_bulktransfer bulk = {0};
-	bulk.ep = 0x02;
-	bulk.len = *buffer_size;
-	bulk.data = buffer;
-	int r = ioctl(device->handle, USBDEVFS_BULK, &bulk);
-	return r == -1 ? LIBREDXX_STATUS_ERROR_SYS : LIBREDXX_STATUS_SUCCESS;
+	libredxx_status ret = LIBREDXX_STATUS_SUCCESS;
+	if (device->found.type == LIBREDXX_DEVICE_TYPE_D2XX || device->found.type == LIBREDXX_DEVICE_TYPE_D3XX) {
+		struct usbdevfs_bulktransfer bulk = {0};
+		bulk.ep = 0x02;
+		bulk.len = *buffer_size;
+		bulk.data = buffer;
+		int r = ioctl(device->handle, USBDEVFS_BULK, &bulk);
+		if (-1 == ioctl(device->handle, USBDEVFS_BULK, &bulk)) {
+			ret = LIBREDXX_STATUS_ERROR_SYS;
+		}
+	} else if (device->found.type == LIBREDXX_DEVICE_TYPE_FT260) {
+		if (endpoint == LIBREDXX_ENDPOINT_FEATURE) {
+			// TODO
+		} else if (endpoint == LIBREDXX_ENDPOINT_IO) {
+			// TODO
+		} else {
+			ret = LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
+		}
+	} else {
+		ret = LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
+	}
+	return ret;
 }
