@@ -33,12 +33,13 @@
 #include <sys/ioctl.h>
 #include <stdlib.h>
 #include <poll.h>
+#include <linux/hid.h>
+#include <linux/hiddev.h>
 
 #define USBFS_PATH "/dev/bus/usb"
 #define SYSFS_DEVICES_PATH "/sys/bus/usb/devices"
 #define D2XX_HEADER_SIZE 2
 
-// Hardcoded FT260 HID interface and endpoint addresses (per typical FTDI FT260 firmware)
 #define LIBREDXX_FT260_ENDPOINT_IN  0x81
 #define LIBREDXX_FT260_ENDPOINT_OUT 0x02
 #define LIBREDXX_FT260_INTERFACE    0
@@ -357,21 +358,42 @@ libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size
 
 libredxx_status libredxx_write(libredxx_opened_device* device, void* buffer, size_t* buffer_size, libredxx_endpoint endpoint)
 {
+	uint8_t* bBuffer = (uint8_t*)buffer;
 	libredxx_status ret = LIBREDXX_STATUS_SUCCESS;
+
 	if (device->found.type == LIBREDXX_DEVICE_TYPE_D2XX || device->found.type == LIBREDXX_DEVICE_TYPE_D3XX) {
 		struct usbdevfs_bulktransfer bulk = {0};
 		bulk.ep = 0x02;
 		bulk.len = *buffer_size;
 		bulk.data = buffer;
-		int r = ioctl(device->handle, USBDEVFS_BULK, &bulk);
 		if (-1 == ioctl(device->handle, USBDEVFS_BULK, &bulk)) {
 			ret = LIBREDXX_STATUS_ERROR_SYS;
 		}
 	} else if (device->found.type == LIBREDXX_DEVICE_TYPE_FT260) {
+		uint8_t report_id = bBuffer[0];
+		if (!report_id || *buffer_size != LIBREDXX_FT260_REPORT_SIZE) {
+			return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
+		}
 		if (endpoint == LIBREDXX_ENDPOINT_FEATURE) {
-			// TODO
+			struct usbdevfs_ctrltransfer ctrl = (struct usbdevfs_ctrltransfer){0};
+			ctrl.bRequestType = USB_DIR_OUT | USB_TYPE_CLASS | USB_RECIP_INTERFACE;
+			ctrl.bRequest = HID_REQ_SET_REPORT;
+			ctrl.wValue = (uint16_t)((HID_REPORT_TYPE_FEATURE << 8) | report_id);
+			ctrl.wIndex = LIBREDXX_FT260_INTERFACE;
+			ctrl.timeout = 1000; // ms
+			ctrl.wLength = (uint16_t)((*buffer_size > 0) ? (*buffer_size - 1) : 0); // exclude report ID
+			ctrl.data = (ctrl.wLength > 0) ? (void*)(bBuffer + 1) : NULL;
+			if (-1 == ioctl(device->handle, USBDEVFS_CONTROL, &ctrl)) {
+				ret = LIBREDXX_STATUS_ERROR_SYS;
+			}
 		} else if (endpoint == LIBREDXX_ENDPOINT_IO) {
-			// TODO
+			struct usbdevfs_bulktransfer bulk = {0};
+			bulk.ep = LIBREDXX_FT260_ENDPOINT_OUT;
+			bulk.len = (int)*buffer_size;
+			bulk.data = buffer;
+			if (-1 == ioctl(device->handle, USBDEVFS_BULK, &bulk)) {
+				ret = LIBREDXX_STATUS_ERROR_SYS;
+			}
 		} else {
 			ret = LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
 		}
