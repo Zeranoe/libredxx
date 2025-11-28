@@ -213,5 +213,8 @@ int main() {
 		print_msa_details(msa_table);
 	}
 
+	libredxx_free_found(found_devices);
+	libredxx_close_device(device);
+
 	return 0;
 }
