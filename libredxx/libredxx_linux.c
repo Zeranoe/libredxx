@@ -298,10 +298,8 @@ static libredxx_status libredxx_d3xx_trigger_read(libredxx_opened_device* device
 libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size_t* buffer_size, libredxx_endpoint endpoint)
 {
 	uint8_t* bBuffer = (uint8_t*)buffer;
-    libredxx_status status;
-
     if (device->found.type == LIBREDXX_DEVICE_TYPE_D3XX) {
-		status = libredxx_d3xx_trigger_read(device, *buffer_size);
+		libredxx_status status = libredxx_d3xx_trigger_read(device, *buffer_size);
 		if (status != LIBREDXX_STATUS_SUCCESS) {
 			return status;
 		}
@@ -395,19 +393,17 @@ libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size
     }
 }
 
-libredxx_status libredxx_write(libredxx_opened_device* device, void* buffer, size_t* buffer_size, libredxx_endpoint endpoint)
-{
+libredxx_status libredxx_write(libredxx_opened_device* device, void* buffer, size_t* buffer_size, libredxx_endpoint endpoint) {
 	uint8_t* bBuffer = (uint8_t*)buffer;
-	libredxx_status ret = LIBREDXX_STATUS_SUCCESS;
-
 	if (device->found.type == LIBREDXX_DEVICE_TYPE_D2XX || device->found.type == LIBREDXX_DEVICE_TYPE_D3XX) {
 		struct usbdevfs_bulktransfer bulk = {0};
 		bulk.ep = 0x02;
 		bulk.len = *buffer_size;
 		bulk.data = buffer;
 		if (-1 == ioctl(device->handle, USBDEVFS_BULK, &bulk)) {
-			ret = LIBREDXX_STATUS_ERROR_SYS;
+			return LIBREDXX_STATUS_ERROR_SYS;
 		}
+		return LIBREDXX_STATUS_SUCCESS;
 	} else if (device->found.type == LIBREDXX_DEVICE_TYPE_FT260) {
 		const uint8_t report_id = bBuffer[0];
 		if (!report_id) {
@@ -423,21 +419,22 @@ libredxx_status libredxx_write(libredxx_opened_device* device, void* buffer, siz
 			ctrl.wLength = *buffer_size;
 			ctrl.data = buffer;
 			if (-1 == ioctl(device->handle, USBDEVFS_CONTROL, &ctrl)) {
-				ret = LIBREDXX_STATUS_ERROR_SYS;
+				return LIBREDXX_STATUS_ERROR_SYS;
 			}
+			return LIBREDXX_STATUS_SUCCESS;
 		} else if (endpoint == LIBREDXX_ENDPOINT_IO) {
 			struct usbdevfs_bulktransfer bulk = {0};
 			bulk.ep = LIBREDXX_FT260_ENDPOINT_OUT;
 			bulk.len = (int)*buffer_size;
 			bulk.data = buffer;
 			if (-1 == ioctl(device->handle, USBDEVFS_BULK, &bulk)) {
-				ret = LIBREDXX_STATUS_ERROR_SYS;
+				return LIBREDXX_STATUS_ERROR_SYS;
 			}
+			return LIBREDXX_STATUS_SUCCESS;
 		} else {
-			ret = LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
+			return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
 		}
 	} else {
-		ret = LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
+		return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
 	}
-	return ret;
 }
