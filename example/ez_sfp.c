@@ -148,6 +148,16 @@ int main() {
 	// give SFP time to boot
 	sleep_ms(1000);
 
+	// reset I2C
+	struct libredxx_ft260_feature_out_i2c_reset rep_i2c_reset = {0};
+	size = sizeof(rep_i2c_reset);
+	rep_i2c_reset.report_id = 0xA1;
+	rep_i2c_reset.request = 0x20;
+	status = libredxx_write(device, &rep_i2c_reset, &size, LIBREDXX_ENDPOINT_FEATURE);
+	if (status != LIBREDXX_STATUS_SUCCESS) {
+		return -1;
+	}
+
 	// set I2C clock speed to 100 Kbps
 	struct libredxx_ft260_feature_out_i2c_speed rep_set_i2c_speed = {0};
 	size = sizeof(rep_set_i2c_speed);

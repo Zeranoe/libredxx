@@ -32,6 +32,11 @@
 
 #pragma pack(push, 1)
 
+struct libredxx_ft260_feature_out_i2c_reset {
+	uint8_t report_id;
+	uint8_t request;
+};
+
 struct libredxx_ft260_feature_out_i2c_speed {
 	uint8_t report_id;
 	uint8_t request;
