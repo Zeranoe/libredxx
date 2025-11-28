@@ -3,6 +3,8 @@
 #include "libredxx/libredxx.h"
 #include "ft260.h"
 
+static uint8_t buf[LIBREDXX_FT260_REPORT_SIZE];
+
 void print_msa_details(const uint8_t* data) {
 	printf("\n=== SFP MSA Details ===\n");
 
@@ -100,80 +102,93 @@ int main() {
 	libredxx_opened_device* device = NULL;
 	status = libredxx_open_device(found_devices[0], &device);
 
-	struct libredxx_ft260_feature_out_report rep_ftr_out;
-	struct libredxx_ft260_output_report rep_out;
-	struct libredxx_ft260_input_report rep_in;
 	size_t size = 0;
 
 	// set GPIO G function
-	memset(&rep_ftr_out, 0, sizeof(rep_ftr_out));
-	size = sizeof(rep_ftr_out);
-	rep_ftr_out.report_id = 0xA1;
-	rep_ftr_out.gpio_function.request = 0x09;
-	rep_ftr_out.gpio_function.function = 0;
-	status = libredxx_write(device, rep_ftr_out.bytes, &size, LIBREDXX_ENDPOINT_FEATURE);
+	struct libredxx_ft260_feature_out_gpio_function rep_set_gpio_fn = {0};
+	size = sizeof(rep_set_gpio_fn);
+	rep_set_gpio_fn.report_id = 0xA1;
+	rep_set_gpio_fn.request = 0x09;
+	rep_set_gpio_fn.function = 0;
+	status = libredxx_write(device, &rep_set_gpio_fn, &size, LIBREDXX_ENDPOINT_FEATURE);
+	if (status != LIBREDXX_STATUS_SUCCESS) {
+		return -1;
+	}
 
 	// set GPIO G direction
-	memset(&rep_ftr_out, 0, sizeof(rep_ftr_out));
-	size = sizeof(rep_ftr_out);
-	rep_ftr_out.report_id = 0xB0;
-	rep_ftr_out.gpio_write.gpio_dir_ex = 1 << 6;
-	status = libredxx_write(device, rep_ftr_out.bytes, &size, LIBREDXX_ENDPOINT_FEATURE);
+	struct libredxx_ft260_feature_out_gpio rep_set_gpio = {0};
+	size = sizeof(rep_set_gpio);
+	rep_set_gpio.report_id = 0xB0;
+	rep_set_gpio.gpio_dir_ex = 1 << 6;
+	status = libredxx_write(device, &rep_set_gpio, &size, LIBREDXX_ENDPOINT_FEATURE);
+	if (status != LIBREDXX_STATUS_SUCCESS) {
+		return -1;
+	}
 
 	// set GPIO value
-	memset(&rep_ftr_out, 0, sizeof(rep_ftr_out));
-	size = sizeof(rep_ftr_out);
-	rep_ftr_out.report_id = 0xB0;
-	rep_ftr_out.gpio_write.gpio_dir_ex = 1 << 6;
-	rep_ftr_out.gpio_write.gpio_val_ex = 1 << 6;
-	status = libredxx_write(device, rep_ftr_out.bytes, &size, LIBREDXX_ENDPOINT_FEATURE);
+	rep_set_gpio.gpio_val_ex = 1 << 6;
+	status = libredxx_write(device, &rep_set_gpio, &size, LIBREDXX_ENDPOINT_FEATURE);
+	if (status != LIBREDXX_STATUS_SUCCESS) {
+		return -1;
+	}
 
 	// set I2C clock speed to 100 Kbps
-	memset(&rep_ftr_out, 0, sizeof(rep_ftr_out));
-	size = sizeof(rep_ftr_out);
-	rep_ftr_out.report_id = 0xA1;
-	rep_ftr_out.i2c_clock_speed.request = 0x22;
-	rep_ftr_out.i2c_clock_speed.speed_lsb = 0x64; // 100kbps
-	rep_ftr_out.i2c_clock_speed.speed_msb = 0;
-	status = libredxx_write(device, rep_ftr_out.bytes, &size, LIBREDXX_ENDPOINT_FEATURE);
+	struct libredxx_ft260_feature_out_i2c_speed rep_set_i2c_speed = {0};
+	size = sizeof(rep_set_i2c_speed);
+	rep_set_i2c_speed.report_id = 0xA1;
+	rep_set_i2c_speed.request = 0x22;
+	rep_set_i2c_speed.speed_lsb = 0x64; // 100kbps
+	rep_set_i2c_speed.speed_msb = 0;
+	status = libredxx_write(device, &rep_set_i2c_speed, &size, LIBREDXX_ENDPOINT_FEATURE);
+	if (status != LIBREDXX_STATUS_SUCCESS) {
+		return -1;
+	}
 
 	// write I2C control byte for MSA
-	memset(&rep_out, 0, sizeof(rep_out));
-	size = sizeof(rep_out);
-	rep_out.report_id = 0xD0;
-	rep_out.i2c_write_request.slave_addr = 0x50;
-	rep_out.i2c_write_request.flags = 0x06; // START | STOP
-	rep_out.i2c_write_request.length = 1;
-	rep_out.i2c_write_request.data[0] = 0x00;
-	status = libredxx_write(device, rep_out.bytes, &size, LIBREDXX_ENDPOINT_IO);
+	struct libredxx_ft260_out_i2c_write* rep_i2c_write = (struct libredxx_ft260_out_i2c_write*)buf;
+	size = 64;
+	memset(rep_i2c_write, 0, size);
+	rep_i2c_write->report_id = 0xDE;
+	rep_i2c_write->slave_addr = 0x50;
+	rep_i2c_write->flags = 0x06; // START | STOP
+	rep_i2c_write->length = 1;
+	rep_i2c_write->data[0] = 0x00;
+	status = libredxx_write(device, rep_i2c_write, &size, LIBREDXX_ENDPOINT_IO);
+	if (status != LIBREDXX_STATUS_SUCCESS) {
+		return -1;
+	}
 
 	// request I2C read for SFP MSA
-	memset(&rep_out, 0, sizeof(rep_out));
-	size = sizeof(rep_out);
-	rep_out.report_id = 0xC2; // I2C Read Request
-	rep_out.i2c_read_request.slave_addr = 0x50;
-	rep_out.i2c_read_request.flags = 0x06; // START | STOP
-	rep_out.i2c_read_request.length = 256;
-	status = libredxx_write(device, rep_out.bytes, &size, LIBREDXX_ENDPOINT_IO);
+	struct libredxx_ft260_out_i2c_read* rep_i2c_read_out = (struct libredxx_ft260_out_i2c_read*)buf;
+	size = sizeof(struct libredxx_ft260_out_i2c_read);
+	memset(rep_i2c_write, 0, size);
+	rep_i2c_read_out->report_id = 0xC2; // I2C Read Request
+	rep_i2c_read_out->slave_addr = 0x50;
+	rep_i2c_read_out->flags = 0x06; // START | STOP
+	rep_i2c_read_out->length = 255;
+	status = libredxx_write(device, rep_i2c_read_out, &size, LIBREDXX_ENDPOINT_IO);
+	if (status != LIBREDXX_STATUS_SUCCESS) {
+		return -1;
+	}
 
 	// Read Loop
-	uint8_t msa_table[256];
+	uint8_t msa_table[255];
 	size_t bytes_read = 0;
 
-	while (bytes_read < 256) {
-		size = sizeof(rep_in);
-		status = libredxx_read(device, rep_in.bytes, &size, LIBREDXX_ENDPOINT_IO);
+	while (bytes_read < sizeof(msa_table)) {
+		struct libredxx_ft260_in_i2c_read* rep_i2c_read_in = (struct libredxx_ft260_in_i2c_read*)buf;
+		status = libredxx_read(device, rep_i2c_read_in, &size, LIBREDXX_ENDPOINT_IO);
 		if (status != LIBREDXX_STATUS_SUCCESS) {
 			return -1;
 		}
 
 		// check report ID for valid I2C input data (0xD0 - 0xDE)
-		if (rep_in.report_id >= 0xD0 && rep_in.report_id <= 0xDE) {
-			size_t chunk_len = rep_in.i2c_read.length;
+		if (rep_i2c_read_in->report_id >= 0xD0 && rep_i2c_read_in->report_id <= 0xDE) {
+			size_t chunk_len = rep_i2c_read_in->length;
 			if (bytes_read + chunk_len > 256) {
 				chunk_len = 256 - bytes_read;
 			}
-			memcpy(msa_table + bytes_read, rep_in.i2c_read.data, chunk_len);
+			memcpy(msa_table + bytes_read, rep_i2c_read_in->data, chunk_len);
 			bytes_read += chunk_len;
 		}
 	}

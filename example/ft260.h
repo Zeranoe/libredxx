@@ -24,104 +24,64 @@
 #define LIBREDXX_LIBREDXX_FT260_H
 #include <stdint.h>
 
-#if defined(__GNUC__)
-#define PACK( __Declaration__ ) __Declaration__ __attribute__((__packed__))
-#elif defined(_MSC_VER)
-#define PACK( __Declaration__ ) __pragma( pack(push, 1) ) __Declaration__ __pragma( pack(pop))
-#else
-#error unsupported compiler
-#endif //LIBREDXX_LIBREDXX_PLATFORM_H
-
 /*
  * Note not all reports are included. Consult the FT260 user guide.
  *
  * TODO add static assert for array sizes?
  */
 
-PACK(struct libredxx_ft260_feature_out_report {
-	union {
-		struct {
-			uint8_t report_id;
-			union {
-				struct {
-					uint8_t request;
-					uint8_t clk_ctl;
-				} system_clock;
-				struct {
-					uint8_t request;
-					uint8_t function;
-				} gpio_function;
-				struct {
-					uint8_t request;
-					uint8_t speed_lsb;
-					uint8_t speed_msb;
-				} i2c_clock_speed;
-				struct {
-					uint8_t gpio_val;
-					uint8_t gpio_dir;
-					uint8_t gpio_val_ex;
-					uint8_t gpio_dir_ex;
-				} gpio_write;
-			};
-		};
-		uint8_t bytes[64];
-	};
-});
+#pragma pack(push, 1)
 
-PACK(struct libredxx_ft260_feature_in_report {
-	union {
-		struct {
-			uint8_t report_id;
-			union {
-				struct {
-					uint8_t gpio_val;
-					uint8_t gpio_dir;
-					uint8_t gpio_val_ex;
-					uint8_t gpio_dir_ex;
-					uint8_t reserved[59];
-				} gpio_read;
-			};
-		};
-		uint8_t bytes[64];
-	};
-});
+struct libredxx_ft260_feature_out_i2c_speed {
+	uint8_t report_id;
+	uint8_t request;
+	uint8_t speed_lsb;
+	uint8_t speed_msb;
+};
 
-PACK(struct libredxx_ft260_output_report {
-	union {
-		struct {
-			uint8_t report_id;
-			union {
-				struct {
-					uint8_t slave_addr;
-					uint8_t flags;
-					uint8_t length;
-					uint8_t data[60];
-				} i2c_write_request;
-				struct {
-					uint8_t slave_addr;
-					uint8_t flags;
-					uint16_t length;
-					uint8_t reserved[59];
-				} i2c_read_request;
-			};
-		};
-		uint8_t bytes[64];
-	};
-});
+struct libredxx_ft260_feature_out_gpio_function {
+	uint8_t report_id;
+	uint8_t request;
+	uint8_t function;
+};
 
-PACK(struct libredxx_ft260_input_report {
-	union {
-		struct {
-			uint8_t report_id;
-			union {
-				struct {
-					uint8_t length;
-					uint8_t data[62];
-				} i2c_read;
-			};
-		};
-		uint8_t bytes[64];
-	};
-});
+struct libredxx_ft260_feature_out_gpio {
+	uint8_t report_id;
+	uint8_t gpio_val;
+	uint8_t gpio_dir;
+	uint8_t gpio_val_ex;
+	uint8_t gpio_dir_ex;
+};
+
+struct libredxx_ft260_feature_in_gpio {
+	uint8_t report_id;
+	uint8_t gpio_val;
+	uint8_t gpio_dir;
+	uint8_t gpio_val_ex;
+	uint8_t gpio_dir_ex;
+};
+
+struct libredxx_ft260_out_i2c_write {
+	uint8_t report_id;
+	uint8_t slave_addr;
+	uint8_t flags;
+	uint8_t length;
+	uint8_t data[];
+};
+
+struct libredxx_ft260_out_i2c_read {
+	uint8_t report_id;
+	uint8_t slave_addr;
+	uint8_t flags;
+	uint8_t length;
+};
+
+struct libredxx_ft260_in_i2c_read {
+	uint8_t report_id;
+	uint8_t length;
+	uint8_t data[];
+};
+
+#pragma pack(pop)
 
 #endif //LIBREDXX_LIBREDXX_FT260_H
