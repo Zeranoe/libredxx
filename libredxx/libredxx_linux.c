@@ -262,11 +262,16 @@ libredxx_status libredxx_close_device(libredxx_opened_device* device)
 	if (device->found.type == LIBREDXX_DEVICE_TYPE_D3XX) {
 		close(device->d3xx_pipes[1]);
 		close(device->d3xx_pipes[0]);
-	} else {
+	} else if (device->found.type == LIBREDXX_DEVICE_TYPE_D2XX) {
 		free(device->d2xx_rx_buffer);
 	}
 	for (unsigned int i = 0; i < device->found.interface_count; ++i) {
 		ioctl(device->handle, USBDEVFS_RELEASEINTERFACE, &i);
+	}
+	if (device->found.type == LIBREDXX_DEVICE_TYPE_FT260) {
+		// if kernel driver detached when opening device, reattach
+		unsigned int if0 = LIBREDXX_FT260_INTERFACE;
+		ioctl(device->handle, USBDEVFS_CONNECT, &if0);
 	}
 	close(device->handle);
 	free(device);
