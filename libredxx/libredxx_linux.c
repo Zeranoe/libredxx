@@ -370,8 +370,8 @@ libredxx_status libredxx_write(libredxx_opened_device* device, void* buffer, siz
 			ret = LIBREDXX_STATUS_ERROR_SYS;
 		}
 	} else if (device->found.type == LIBREDXX_DEVICE_TYPE_FT260) {
-		uint8_t report_id = bBuffer[0];
-		if (!report_id || *buffer_size != LIBREDXX_FT260_REPORT_SIZE) {
+		const uint8_t report_id = bBuffer[0];
+		if (!report_id) {
 			return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
 		}
 		if (endpoint == LIBREDXX_ENDPOINT_FEATURE) {
@@ -381,8 +381,8 @@ libredxx_status libredxx_write(libredxx_opened_device* device, void* buffer, siz
 			ctrl.wValue = (uint16_t)((HID_REPORT_TYPE_FEATURE << 8) | report_id);
 			ctrl.wIndex = LIBREDXX_FT260_INTERFACE;
 			ctrl.timeout = 1000; // ms
-			ctrl.wLength = (uint16_t)((*buffer_size > 0) ? (*buffer_size - 1) : 0); // exclude report ID
-			ctrl.data = (ctrl.wLength > 0) ? (void*)(bBuffer + 1) : NULL;
+			ctrl.wLength = *buffer_size;
+			ctrl.data = buffer;
 			if (-1 == ioctl(device->handle, USBDEVFS_CONTROL, &ctrl)) {
 				ret = LIBREDXX_STATUS_ERROR_SYS;
 			}
