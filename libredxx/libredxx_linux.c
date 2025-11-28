@@ -297,8 +297,10 @@ static libredxx_status libredxx_d3xx_trigger_read(libredxx_opened_device* device
 
 libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size_t* buffer_size, libredxx_endpoint endpoint)
 {
-	libredxx_status status;
-	if (device->found.type == LIBREDXX_DEVICE_TYPE_D3XX) {
+	uint8_t* bBuffer = (uint8_t*)buffer;
+    libredxx_status status;
+
+    if (device->found.type == LIBREDXX_DEVICE_TYPE_D3XX) {
 		status = libredxx_d3xx_trigger_read(device, *buffer_size);
 		if (status != LIBREDXX_STATUS_SUCCESS) {
 			return status;
@@ -331,29 +333,66 @@ libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size
 			return LIBREDXX_STATUS_ERROR_SYS;
 		}
 
-		*buffer_size = urb.actual_length;
-		return LIBREDXX_STATUS_SUCCESS;
-	} else {
-		struct usbdevfs_bulktransfer bulk = {0};
-		bulk.ep = 0x81;
-		bulk.len = device->d2xx_rx_buffer_size;
-		bulk.data = device->d2xx_rx_buffer;
-		device->read_interrupted = false;
-		while (true) {
-			int r = ioctl(device->handle, USBDEVFS_BULK, &bulk);
-			if (r == -1) {
-				return LIBREDXX_STATUS_ERROR_SYS;
-			}
-			if (r > D2XX_HEADER_SIZE) {
-				*buffer_size = r - D2XX_HEADER_SIZE;
-				memcpy(buffer, &device->d2xx_rx_buffer[2], *buffer_size);
-				return LIBREDXX_STATUS_SUCCESS;
-			}
-			if (device->read_interrupted) {
-				return LIBREDXX_STATUS_ERROR_INTERRUPTED;
-			}
-		}
-	}
+        *buffer_size = urb.actual_length;
+        return LIBREDXX_STATUS_SUCCESS;
+    } else if (device->found.type == LIBREDXX_DEVICE_TYPE_D2XX) {
+        struct usbdevfs_bulktransfer bulk = {0};
+        bulk.ep = 0x81;
+        bulk.len = device->d2xx_rx_buffer_size;
+        bulk.data = device->d2xx_rx_buffer;
+        device->read_interrupted = false;
+        while (true) {
+            int r = ioctl(device->handle, USBDEVFS_BULK, &bulk);
+            if (r == -1) {
+                return LIBREDXX_STATUS_ERROR_SYS;
+            }
+            if (r > D2XX_HEADER_SIZE) {
+                *buffer_size = r - D2XX_HEADER_SIZE;
+                memcpy(buffer, &device->d2xx_rx_buffer[2], *buffer_size);
+                return LIBREDXX_STATUS_SUCCESS;
+            }
+            if (device->read_interrupted) {
+                return LIBREDXX_STATUS_ERROR_INTERRUPTED;
+            }
+        }
+    } else if (device->found.type == LIBREDXX_DEVICE_TYPE_FT260) {
+        const uint8_t report_id = bBuffer[0];
+        if (!report_id || *buffer_size < 1) {
+            return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
+        }
+        if (endpoint == LIBREDXX_ENDPOINT_FEATURE) {
+            struct usbdevfs_ctrltransfer ctrl = {0};
+            ctrl.bRequestType = USB_DIR_IN | USB_TYPE_CLASS | USB_RECIP_INTERFACE;
+            ctrl.bRequest = HID_REQ_GET_REPORT;
+            ctrl.wValue = (uint16_t)((HID_REPORT_TYPE_FEATURE << 8) | report_id);
+            ctrl.wIndex = LIBREDXX_FT260_INTERFACE;
+            ctrl.timeout = 1000; // ms
+            // leave report ID at bBuffer[0]
+            ctrl.wLength = (uint16_t)((*buffer_size > 0) ? (*buffer_size - 1) : 0);
+            ctrl.data = (ctrl.wLength > 0) ? (void*)(bBuffer + 1) : NULL;
+            int r = ioctl(device->handle, USBDEVFS_CONTROL, &ctrl);
+            if (r == -1) {
+                return LIBREDXX_STATUS_ERROR_SYS;
+            }
+            *buffer_size = 1 + r;
+            return LIBREDXX_STATUS_SUCCESS;
+        } else if (endpoint == LIBREDXX_ENDPOINT_IO) {
+            struct usbdevfs_bulktransfer bulk = {0};
+            bulk.ep = LIBREDXX_FT260_ENDPOINT_IN;
+            bulk.len = (int)*buffer_size;
+            bulk.data = buffer; // expect report ID as first byte in data from device
+            int r = ioctl(device->handle, USBDEVFS_BULK, &bulk);
+            if (r == -1) {
+                return LIBREDXX_STATUS_ERROR_SYS;
+            }
+            *buffer_size = (size_t)r;
+            return LIBREDXX_STATUS_SUCCESS;
+        } else {
+            return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
+        }
+    } else {
+        return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
+    }
 }
 
 libredxx_status libredxx_write(libredxx_opened_device* device, void* buffer, size_t* buffer_size, libredxx_endpoint endpoint)
@@ -375,7 +414,7 @@ libredxx_status libredxx_write(libredxx_opened_device* device, void* buffer, siz
 			return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
 		}
 		if (endpoint == LIBREDXX_ENDPOINT_FEATURE) {
-			struct usbdevfs_ctrltransfer ctrl = (struct usbdevfs_ctrltransfer){0};
+			struct usbdevfs_ctrltransfer ctrl = {0};
 			ctrl.bRequestType = USB_DIR_OUT | USB_TYPE_CLASS | USB_RECIP_INTERFACE;
 			ctrl.bRequest = HID_REQ_SET_REPORT;
 			ctrl.wValue = (uint16_t)((HID_REPORT_TYPE_FEATURE << 8) | report_id);
