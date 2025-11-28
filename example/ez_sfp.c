@@ -1,9 +1,22 @@
 #include <stdio.h>
+#include <time.h>
 #include <string.h>
 #include "libredxx/libredxx.h"
 #include "ft260.h"
 
 static uint8_t buf[LIBREDXX_FT260_REPORT_SIZE];
+
+void sleep_ms(uint64_t ms)
+{
+#ifdef _WIN32
+	Sleep((DWORD)ms);
+#else
+	struct timespec ts;
+	ts.tv_sec = ms / 1000;
+	ts.tv_nsec = (ms % 1000) * 1000000;
+	nanosleep(&ts, NULL);
+#endif
+}
 
 void print_msa_details(const uint8_t* data) {
 	printf("\n=== SFP MSA Details ===\n");
@@ -132,6 +145,9 @@ int main() {
 		return -1;
 	}
 
+	// give SFP time to boot
+	sleep_ms(1000);
+
 	// set I2C clock speed to 100 Kbps
 	struct libredxx_ft260_feature_out_i2c_speed rep_set_i2c_speed = {0};
 	size = sizeof(rep_set_i2c_speed);
@@ -172,11 +188,11 @@ int main() {
 	}
 
 	// Read Loop
-	uint8_t msa_table[255];
+	uint8_t msa_table[128];
 	size_t bytes_read = 0;
-
 	while (bytes_read < sizeof(msa_table)) {
 		struct libredxx_ft260_in_i2c_read* rep_i2c_read_in = (struct libredxx_ft260_in_i2c_read*)buf;
+		size = LIBREDXX_FT260_REPORT_SIZE;
 		status = libredxx_read(device, rep_i2c_read_in, &size, LIBREDXX_ENDPOINT_IO);
 		if (status != LIBREDXX_STATUS_SUCCESS) {
 			return -1;
@@ -185,15 +201,15 @@ int main() {
 		// check report ID for valid I2C input data (0xD0 - 0xDE)
 		if (rep_i2c_read_in->report_id >= 0xD0 && rep_i2c_read_in->report_id <= 0xDE) {
 			size_t chunk_len = rep_i2c_read_in->length;
-			if (bytes_read + chunk_len > 256) {
-				chunk_len = 256 - bytes_read;
+			if (bytes_read + chunk_len > sizeof(msa_table)) {
+				chunk_len = sizeof(msa_table) - bytes_read;
 			}
 			memcpy(msa_table + bytes_read, rep_i2c_read_in->data, chunk_len);
 			bytes_read += chunk_len;
 		}
 	}
 
-	if (bytes_read == 256) {
+	if (bytes_read == sizeof(msa_table)) {
 		print_msa_details(msa_table);
 	}
 
