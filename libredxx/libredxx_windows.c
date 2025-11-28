@@ -506,7 +506,7 @@ libredxx_status libredxx_write(libredxx_opened_device* device, void* buffer, siz
 		CloseHandle(overlapped.hEvent);
 	} else if (device->found.type == LIBREDXX_DEVICE_TYPE_FT260) {
 		BYTE report_id = bBuffer[0];
-		if (!report_id || *buffer_size != LIBREDXX_FT260_REPORT_SIZE) {
+		if (!report_id) {
 			return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
 		}
 		if (endpoint == LIBREDXX_ENDPOINT_FEATURE) {
