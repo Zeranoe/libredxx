@@ -172,6 +172,20 @@ int main() {
 		return -1;
 	}
 
+	// check if SFP connected
+	struct libredxx_ft260_feature_in_gpio rep_get_gpio = {0};
+	size = sizeof(rep_get_gpio);
+	rep_get_gpio.report_id = 0xB0;
+	status = libredxx_read(device, &rep_get_gpio, &size, LIBREDXX_ENDPOINT_FEATURE);
+	if (status != LIBREDXX_STATUS_SUCCESS) {
+		return -1;
+	}
+	bool is_sfp_connected = (rep_get_gpio.gpio_val_ex & (1 << 3)) ? 0 : 1;
+	if (!is_sfp_connected) {
+		printf("No SFP connected to EZ-SFP\n");
+		return 0;
+	}
+
 	// write I2C control byte for MSA
 	struct libredxx_ft260_out_i2c_write* rep_i2c_write = (struct libredxx_ft260_out_i2c_write*)buf;
 	size = 64;

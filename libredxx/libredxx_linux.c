@@ -374,14 +374,11 @@ libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size
             ctrl.wValue = (uint16_t)((HID_REPORT_TYPE_FEATURE << 8) | report_id);
             ctrl.wIndex = LIBREDXX_FT260_INTERFACE;
             ctrl.timeout = 1000; // ms
-            // leave report ID at bBuffer[0]
-            ctrl.wLength = (uint16_t)((*buffer_size > 0) ? (*buffer_size - 1) : 0);
-            ctrl.data = (ctrl.wLength > 0) ? (void*)(bBuffer + 1) : NULL;
-            int r = ioctl(device->handle, USBDEVFS_CONTROL, &ctrl);
-            if (r == -1) {
-                return LIBREDXX_STATUS_ERROR_SYS;
+            ctrl.wLength = *buffer_size;
+            ctrl.data = buffer;
+            if (-1 == ioctl(device->handle, USBDEVFS_CONTROL, &ctrl)) {
+            	return LIBREDXX_STATUS_ERROR_SYS;
             }
-            *buffer_size = 1 + r;
             return LIBREDXX_STATUS_SUCCESS;
         } else if (endpoint == LIBREDXX_ENDPOINT_IO) {
             device->read_interrupted = false;
