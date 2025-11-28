@@ -35,6 +35,7 @@
 #include <poll.h>
 #include <linux/hid.h>
 #include <linux/hiddev.h>
+#include <errno.h>
 
 #define USBFS_PATH "/dev/bus/usb"
 #define SYSFS_DEVICES_PATH "/sys/bus/usb/devices"
@@ -378,16 +379,26 @@ libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size
             *buffer_size = 1 + r;
             return LIBREDXX_STATUS_SUCCESS;
         } else if (endpoint == LIBREDXX_ENDPOINT_IO) {
-            struct usbdevfs_bulktransfer bulk = {0};
-            bulk.ep = LIBREDXX_FT260_ENDPOINT_IN;
-            bulk.len = (int)*buffer_size;
-            bulk.data = buffer;
-            int r = ioctl(device->handle, USBDEVFS_BULK, &bulk);
-            if (r == -1) {
+            device->read_interrupted = false;
+            while (true) {
+                struct usbdevfs_bulktransfer bulk = {0};
+                bulk.ep = LIBREDXX_FT260_ENDPOINT_IN;
+                bulk.len = (int)*buffer_size;
+                bulk.timeout = 100; // ms
+                bulk.data = buffer;
+                int r = ioctl(device->handle, USBDEVFS_BULK, &bulk);
+                if (r >= 0) {
+                    *buffer_size = r;
+                    return LIBREDXX_STATUS_SUCCESS;
+                }
+                if (errno == ETIMEDOUT) {
+                    if (device->read_interrupted) {
+                        return LIBREDXX_STATUS_ERROR_INTERRUPTED;
+                    }
+                    continue;
+                }
                 return LIBREDXX_STATUS_ERROR_SYS;
             }
-            *buffer_size = r;
-            return LIBREDXX_STATUS_SUCCESS;
         } else {
             return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
         }
