@@ -455,11 +455,11 @@ libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size
 		CloseHandle(overlapped.hEvent);
 		device->d2xx_read_event = NULL;
 	} else if (device->found.type == LIBREDXX_DEVICE_TYPE_FT260) {
-		BYTE report_id = bBuffer[0];
-		if (!report_id || *buffer_size != LIBREDXX_FT260_REPORT_SIZE) {
-			return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
-		}
 		if (endpoint == LIBREDXX_ENDPOINT_FEATURE) {
+			BYTE report_id = bBuffer[0];
+			if (!report_id) {
+				return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
+			}
 			if (!HidD_GetFeature(device->handle, buffer, (DWORD)*buffer_size)) {
 				ret = LIBREDXX_STATUS_ERROR_SYS;
 			}
