@@ -4,6 +4,8 @@
 #include "libredxx/libredxx.h"
 #include "ft260.h"
 
+#define MSA_SIZE 128
+
 static uint8_t buf[LIBREDXX_FT260_REPORT_SIZE];
 
 void sleep_ms(uint64_t ms)
@@ -191,14 +193,14 @@ int main() {
 	rep_i2c_read_out->report_id = 0xC2; // I2C Read Request
 	rep_i2c_read_out->slave_addr = 0x50;
 	rep_i2c_read_out->flags = 0x06; // START | STOP
-	rep_i2c_read_out->length = 255;
+	rep_i2c_read_out->length = MSA_SIZE;
 	status = libredxx_write(device, rep_i2c_read_out, &size, LIBREDXX_ENDPOINT_IO);
 	if (status != LIBREDXX_STATUS_SUCCESS) {
 		return -1;
 	}
 
 	// Read Loop
-	uint8_t msa_table[128];
+	uint8_t msa_table[MSA_SIZE];
 	size_t bytes_read = 0;
 	while (bytes_read < sizeof(msa_table)) {
 		struct libredxx_ft260_in_i2c_read* rep_i2c_read_in = (struct libredxx_ft260_in_i2c_read*)buf;
