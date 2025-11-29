@@ -465,6 +465,7 @@ libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size
 			if (!HidD_GetFeature(device->handle, buffer, (DWORD)*buffer_size)) {
 				return LIBREDXX_STATUS_ERROR_SYS;
 			}
+			return LIBREDXX_STATUS_SUCCESS;
 		} else if (endpoint == LIBREDXX_ENDPOINT_IO) {
 			libredxx_status ret = LIBREDXX_STATUS_SUCCESS;
 			OVERLAPPED overlapped = {0};
