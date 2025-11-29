@@ -35,8 +35,8 @@
 int main(int argc, char** argv) {
 	if (argc < 6 || argc > (5 + MAX_WRITE_SIZE)) {
 		printf("usage: %s <vid> <pid> <addr> [<read> <size> | <write> <byte_1> <byte_2> ... <byte_%d>]\n", argv[0], MAX_WRITE_SIZE);
-		printf("example: %s 0403 0603 20 read 12\n", argv[0]);
-		printf("example: %s 0403 0603 30 write 01 02 03\n", argv[0]);
+		printf("example: %s 0403 6030 20 read 12\n", argv[0]);
+		printf("example: %s 0403 6030 30 write 01 02 03\n", argv[0]);
 		return -1;
 	}
 
