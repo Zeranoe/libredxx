@@ -205,35 +205,29 @@ libredxx_status libredxx_get_device_type(const libredxx_found_device* found, lib
 
 libredxx_status libredxx_open_device(const libredxx_found_device* found, libredxx_opened_device** opened)
 {
-	int handle = open(found->path, O_RDWR);
-	if (handle == -1) {
-		return LIBREDXX_STATUS_ERROR_SYS;
-	}
-	bool claimed = false;
-	if (found->type == LIBREDXX_DEVICE_TYPE_FT260) {
-		// detach kernel HID driver if attached
-		struct usbdevfs_getdriver gd = {0};
-		gd.interface = LIBREDXX_FT260_INTERFACE;
-		if (ioctl(handle, USBDEVFS_GETDRIVER, &gd) == 0) {
-			struct usbdevfs_disconnect_claim dc = {0};
-			dc.interface = LIBREDXX_FT260_INTERFACE;
-			strncpy(dc.driver, "libredxx", sizeof(dc.driver) - 1);
-			if (ioctl(handle, USBDEVFS_DISCONNECT_CLAIM, &dc) == -1) {
-				close(handle);
-				return LIBREDXX_STATUS_ERROR_SYS; // per requirement: fail if detach fails
-			}
-			claimed = true;
-		}
-	}
-	if (!claimed) {
-		for (unsigned int i = 0; i < found->interface_count; ++i) {
-			if (ioctl(handle, USBDEVFS_CLAIMINTERFACE, &i) == -1) {
-				close(handle);
-				return LIBREDXX_STATUS_ERROR_SYS;
-			}
-		}
-		claimed = true;
-	}
+    int handle = open(found->path, O_RDWR);
+    if (handle == -1) {
+        return LIBREDXX_STATUS_ERROR_SYS;
+    }
+    // if a kernel driver is bound to an interface, disconnect it and claim; otherwise just claim
+    for (unsigned int i = 0; i < found->interface_count; ++i) {
+        struct usbdevfs_getdriver gd = {0};
+        gd.interface = i;
+        if (ioctl(handle, USBDEVFS_GETDRIVER, &gd) == 0) {
+            struct usbdevfs_disconnect_claim dc = {0};
+            dc.interface = i;
+            strncpy(dc.driver, "libredxx", sizeof(dc.driver) - 1);
+            if (ioctl(handle, USBDEVFS_DISCONNECT_CLAIM, &dc) == -1) {
+                close(handle);
+                return LIBREDXX_STATUS_ERROR_SYS;
+            }
+        } else {
+            if (ioctl(handle, USBDEVFS_CLAIMINTERFACE, &i) == -1) {
+                close(handle);
+                return LIBREDXX_STATUS_ERROR_SYS;
+            }
+        }
+    }
 	libredxx_opened_device* private_opened = calloc(1, sizeof(libredxx_opened_device));
 	if (!private_opened) {
 		close(handle);
@@ -268,10 +262,9 @@ libredxx_status libredxx_close_device(libredxx_opened_device* device)
 	for (unsigned int i = 0; i < device->found.interface_count; ++i) {
 		ioctl(device->handle, USBDEVFS_RELEASEINTERFACE, &i);
 	}
-	if (device->found.type == LIBREDXX_DEVICE_TYPE_FT260) {
-		// if kernel driver detached when opening device, reattach
-		unsigned int if0 = LIBREDXX_FT260_INTERFACE;
-		ioctl(device->handle, USBDEVFS_CONNECT, &if0);
+	// reattach kernel drivers if any were detached
+	for (unsigned int i = 0; i < device->found.interface_count; ++i) {
+		ioctl(device->handle, USBDEVFS_CONNECT, &i);
 	}
 	close(device->handle);
 	free(device);
