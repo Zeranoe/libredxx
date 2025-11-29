@@ -68,7 +68,7 @@ enum libredxx_status {
 typedef enum libredxx_status libredxx_status;
 
 enum libredxx_endpoint {
-	LIBREDXX_ENDPOINT_FEATURE,
+	LIBREDXX_ENDPOINT_CONTROL,
 	LIBREDXX_ENDPOINT_IO,
 };
 typedef enum libredxx_endpoint libredxx_endpoint;

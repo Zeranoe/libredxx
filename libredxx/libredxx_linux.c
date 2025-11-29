@@ -364,7 +364,7 @@ libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size
     		return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
     	}
     } else if (device->found.type == LIBREDXX_DEVICE_TYPE_FT260) {
-        if (endpoint == LIBREDXX_ENDPOINT_FEATURE) {
+        if (endpoint == LIBREDXX_ENDPOINT_CONTROL) {
 			const uint8_t report_id = bBuffer[0];
         	if (!report_id || *buffer_size != LIBREDXX_FT260_REPORT_SIZE) {
         		return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
@@ -428,7 +428,7 @@ libredxx_status libredxx_write(libredxx_opened_device* device, void* buffer, siz
 		if (!report_id) {
 			return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
 		}
-		if (endpoint == LIBREDXX_ENDPOINT_FEATURE) {
+		if (endpoint == LIBREDXX_ENDPOINT_CONTROL) {
 			if (*buffer_size != LIBREDXX_FT260_REPORT_SIZE) {
 				return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
 			}
