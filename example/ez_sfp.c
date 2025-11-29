@@ -10,8 +10,6 @@
 
 #define MSA_SIZE 128
 
-static uint8_t buf[LIBREDXX_FT260_REPORT_SIZE];
-
 void sleep_ms(uint64_t ms)
 {
 #ifdef _WIN32
@@ -191,28 +189,26 @@ int main() {
 	}
 
 	// write I2C control byte for MSA
-	struct libredxx_ft260_out_i2c_write* rep_i2c_write = (struct libredxx_ft260_out_i2c_write*)buf;
-	size = 64;
-	memset(rep_i2c_write, 0, size);
-	rep_i2c_write->report_id = 0xDE;
-	rep_i2c_write->slave_addr = 0x50;
-	rep_i2c_write->flags = 0x06; // START | STOP
-	rep_i2c_write->length = 1;
-	rep_i2c_write->data[0] = 0x00;
-	status = libredxx_write(device, rep_i2c_write, &size, LIBREDXX_ENDPOINT_IO);
+	struct libredxx_ft260_out_i2c_write rep_i2c_write = {0};
+	size = sizeof(rep_i2c_write);
+	rep_i2c_write.report_id = 0xDE;
+	rep_i2c_write.slave_addr = 0x50;
+	rep_i2c_write.flags = 0x06; // START | STOP
+	rep_i2c_write.length = 1;
+	rep_i2c_write.data[0] = 0x00;
+	status = libredxx_write(device, &rep_i2c_write, &size, LIBREDXX_ENDPOINT_IO);
 	if (status != LIBREDXX_STATUS_SUCCESS) {
 		return -1;
 	}
 
 	// request I2C read for SFP MSA
-	struct libredxx_ft260_out_i2c_read* rep_i2c_read_out = (struct libredxx_ft260_out_i2c_read*)buf;
-	size = sizeof(struct libredxx_ft260_out_i2c_read);
-	memset(rep_i2c_write, 0, size);
-	rep_i2c_read_out->report_id = 0xC2; // I2C Read Request
-	rep_i2c_read_out->slave_addr = 0x50;
-	rep_i2c_read_out->flags = 0x06; // START | STOP
-	rep_i2c_read_out->length = MSA_SIZE;
-	status = libredxx_write(device, rep_i2c_read_out, &size, LIBREDXX_ENDPOINT_IO);
+	struct libredxx_ft260_out_i2c_read rep_i2c_read_out = {0};
+	size = sizeof(rep_i2c_read_out);
+	rep_i2c_read_out.report_id = 0xC2; // I2C Read Request
+	rep_i2c_read_out.slave_addr = 0x50;
+	rep_i2c_read_out.flags = 0x06; // START | STOP
+	rep_i2c_read_out.length = MSA_SIZE;
+	status = libredxx_write(device, &rep_i2c_read_out, &size, LIBREDXX_ENDPOINT_IO);
 	if (status != LIBREDXX_STATUS_SUCCESS) {
 		return -1;
 	}
@@ -221,20 +217,20 @@ int main() {
 	uint8_t msa_table[MSA_SIZE];
 	size_t bytes_read = 0;
 	while (bytes_read < sizeof(msa_table)) {
-		struct libredxx_ft260_in_i2c_read* rep_i2c_read_in = (struct libredxx_ft260_in_i2c_read*)buf;
-		size = LIBREDXX_FT260_REPORT_SIZE;
-		status = libredxx_read(device, rep_i2c_read_in, &size, LIBREDXX_ENDPOINT_IO);
+		struct libredxx_ft260_in_i2c_read rep_i2c_read_in = {0};
+		size = sizeof(rep_i2c_read_in);
+		status = libredxx_read(device, &rep_i2c_read_in, &size, LIBREDXX_ENDPOINT_IO);
 		if (status != LIBREDXX_STATUS_SUCCESS) {
 			return -1;
 		}
 
 		// check report ID for valid I2C input data (0xD0 - 0xDE)
-		if (rep_i2c_read_in->report_id >= 0xD0 && rep_i2c_read_in->report_id <= 0xDE) {
-			size_t chunk_len = rep_i2c_read_in->length;
+		if (rep_i2c_read_in.report_id >= 0xD0 && rep_i2c_read_in.report_id <= 0xDE) {
+			size_t chunk_len = rep_i2c_read_in.length;
 			if (bytes_read + chunk_len > sizeof(msa_table)) {
 				chunk_len = sizeof(msa_table) - bytes_read;
 			}
-			memcpy(msa_table + bytes_read, rep_i2c_read_in->data, chunk_len);
+			memcpy(msa_table + bytes_read, rep_i2c_read_in.data, chunk_len);
 			bytes_read += chunk_len;
 		}
 	}

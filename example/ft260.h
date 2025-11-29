@@ -35,6 +35,7 @@
 struct libredxx_ft260_feature_out_i2c_reset {
 	uint8_t report_id;
 	uint8_t request;
+	uint8_t reserved[62];
 };
 
 struct libredxx_ft260_feature_out_i2c_speed {
@@ -42,12 +43,14 @@ struct libredxx_ft260_feature_out_i2c_speed {
 	uint8_t request;
 	uint8_t speed_lsb;
 	uint8_t speed_msb;
+	uint8_t reserved[60];
 };
 
 struct libredxx_ft260_feature_out_gpio_function {
 	uint8_t report_id;
 	uint8_t request;
 	uint8_t function;
+	uint8_t reserved[61];
 };
 
 struct libredxx_ft260_feature_out_gpio {
@@ -56,6 +59,7 @@ struct libredxx_ft260_feature_out_gpio {
 	uint8_t gpio_dir;
 	uint8_t gpio_val_ex;
 	uint8_t gpio_dir_ex;
+	uint8_t reserved[59];
 };
 
 struct libredxx_ft260_feature_in_gpio {
@@ -64,6 +68,7 @@ struct libredxx_ft260_feature_in_gpio {
 	uint8_t gpio_dir;
 	uint8_t gpio_val_ex;
 	uint8_t gpio_dir_ex;
+	uint8_t reserved[59];
 };
 
 struct libredxx_ft260_out_i2c_write {
@@ -71,7 +76,7 @@ struct libredxx_ft260_out_i2c_write {
 	uint8_t slave_addr;
 	uint8_t flags;
 	uint8_t length;
-	uint8_t data[];
+	uint8_t data[60];
 };
 
 struct libredxx_ft260_out_i2c_read {
@@ -79,12 +84,13 @@ struct libredxx_ft260_out_i2c_read {
 	uint8_t slave_addr;
 	uint8_t flags;
 	uint8_t length;
+	uint8_t data[60];
 };
 
 struct libredxx_ft260_in_i2c_read {
 	uint8_t report_id;
 	uint8_t length;
-	uint8_t data[];
+	uint8_t data[62];
 };
 
 #pragma pack(pop)
