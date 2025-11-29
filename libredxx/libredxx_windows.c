@@ -32,6 +32,8 @@
 #include <usbiodef.h>
 #include <devpkey.h>
 #include <hidsdi.h>
+#include <winioctl.h>
+#include <hidclass.h>
 
 struct libredxx_found_device {
 	WCHAR path[256];
@@ -462,9 +464,20 @@ libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size
 			if (!report_id) {
 				return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
 			}
-			if (!HidD_GetFeature(device->handle, buffer, (DWORD)*buffer_size)) {
+			DWORD bytes_returned = 0;
+			// For GET_FEATURE, pass the report ID in the input buffer (size 1),
+			// and receive the full feature report into the output buffer.
+			if (!DeviceIoControl(device->handle,
+							 IOCTL_HID_GET_FEATURE,
+							 buffer,
+							 1,
+							 buffer,
+							 (DWORD)*buffer_size,
+							 &bytes_returned,
+							 NULL)) {
 				return LIBREDXX_STATUS_ERROR_SYS;
 			}
+			*buffer_size = bytes_returned;
 			return LIBREDXX_STATUS_SUCCESS;
 		} else if (endpoint == LIBREDXX_ENDPOINT_IO) {
 			libredxx_status ret = LIBREDXX_STATUS_SUCCESS;
@@ -517,7 +530,15 @@ libredxx_status libredxx_write(libredxx_opened_device* device, void* buffer, siz
 			return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
 		}
 		if (endpoint == LIBREDXX_ENDPOINT_FEATURE) {
-			if (!HidD_SetFeature(device->handle, buffer, (DWORD)*buffer_size)) {
+			DWORD bytes_returned = 0;
+			if (!DeviceIoControl(device->handle,
+							 IOCTL_HID_SET_FEATURE,
+							 buffer,
+							 (DWORD)*buffer_size,
+							 NULL,
+							 0,
+							 &bytes_returned,
+							 NULL)) {
 				return LIBREDXX_STATUS_ERROR_SYS;
 			}
 			return LIBREDXX_STATUS_SUCCESS;
