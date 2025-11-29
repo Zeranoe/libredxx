@@ -361,12 +361,9 @@ libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size
             }
         }
     } else if (device->found.type == LIBREDXX_DEVICE_TYPE_FT260) {
-        if (*buffer_size < 1) {
-            return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
-        }
         if (endpoint == LIBREDXX_ENDPOINT_FEATURE) {
 			const uint8_t report_id = bBuffer[0];
-        	if (!report_id) {
+        	if (!report_id || *buffer_size != LIBREDXX_FT260_REPORT_SIZE) {
         		return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
         	}
             struct usbdevfs_ctrltransfer ctrl = {0};
@@ -427,6 +424,9 @@ libredxx_status libredxx_write(libredxx_opened_device* device, void* buffer, siz
 			return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
 		}
 		if (endpoint == LIBREDXX_ENDPOINT_FEATURE) {
+			if (*buffer_size != LIBREDXX_FT260_REPORT_SIZE) {
+				return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
+			}
 			struct usbdevfs_ctrltransfer ctrl = {0};
 			ctrl.bRequestType = USB_DIR_OUT | USB_TYPE_CLASS | USB_RECIP_INTERFACE;
 			ctrl.bRequest = HID_REQ_SET_REPORT;
