@@ -25,9 +25,7 @@
 #include <stdint.h>
 
 /*
- * Note not all reports are included. Consult the FT260 user guide.
- *
- * TODO add static assert for array sizes?
+ * NOTE: not all reports are included. Consult the FT260 user guide.
  */
 
 #pragma pack(push, 1)

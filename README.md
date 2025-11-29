@@ -21,3 +21,4 @@ API documentation can be found within [libredxx.h](libredxx/libredxx.h).
 
 libredxx is licensed under the MIT license, a copy can be found in
 [LICENSE](LICENSE).
+
