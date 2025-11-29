@@ -279,6 +279,8 @@ libredxx_status libredxx_interrupt(libredxx_opened_device* device)
 		if (write(device->d3xx_pipes[1], &one, sizeof(one)) != sizeof(one)) {
 			return LIBREDXX_STATUS_ERROR_SYS;
 		}
+	} else if (device->found.type != LIBREDXX_DEVICE_TYPE_D2XX && device->found.type != LIBREDXX_DEVICE_TYPE_FT260) {
+		return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
 	}
 	return LIBREDXX_STATUS_SUCCESS;
 }
