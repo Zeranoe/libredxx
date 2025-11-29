@@ -246,9 +246,7 @@ static libredxx_status libredxx_d3xx_set_timeout(libredxx_opened_device* device,
 
 libredxx_status libredxx_open_device(const libredxx_found_device* found, libredxx_opened_device** opened)
 {
-	DWORD create_flags = found->type == LIBREDXX_DEVICE_TYPE_D2XX
-		                     ? 0
-		                     : FILE_FLAG_OVERLAPPED | FILE_ATTRIBUTE_NORMAL;
+	DWORD create_flags = found->type == LIBREDXX_DEVICE_TYPE_D2XX ? 0 : FILE_FLAG_OVERLAPPED | FILE_ATTRIBUTE_NORMAL;
 	HANDLE handle = CreateFileW(found->path, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, create_flags, NULL);
 	if (handle == INVALID_HANDLE_VALUE) {
 		return LIBREDXX_STATUS_ERROR_SYS;
@@ -323,25 +321,25 @@ static libredxx_status libredxx_d3xx_set_stream_pipe(libredxx_opened_device* dev
 libredxx_status libredxx_interrupt(libredxx_opened_device* device)
 {
 	device->read_interrupted = true;
-	libredxx_status status = LIBREDXX_STATUS_SUCCESS;
-
 	if (device->found.type == LIBREDXX_DEVICE_TYPE_D2XX) {
-		if (!SetEvent(device->d2xx_read_event)) {
-			status = LIBREDXX_STATUS_ERROR_SYS;
-		}
+		return SetEvent(device->d2xx_read_event) ? LIBREDXX_STATUS_SUCCESS : LIBREDXX_STATUS_ERROR_SYS;
 	} else if (device->found.type == LIBREDXX_DEVICE_TYPE_D3XX) {
 		// abort also released the overlapped event
+		libredxx_status status;
 		status = libredxx_d3xx_abort_pipe(device, 0x82);
 		if (status != LIBREDXX_STATUS_SUCCESS) {
 			return status;
 		}
 		status = libredxx_d3xx_abort_pipe(device, 0x02);
+		return status;
 	} else if (device->found.type == LIBREDXX_DEVICE_TYPE_FT260) {
 		if (!CancelIoEx(device->handle, NULL)) {
-			status = LIBREDXX_STATUS_ERROR_SYS;
+			return LIBREDXX_STATUS_ERROR_SYS;
 		}
+		return LIBREDXX_STATUS_SUCCESS;
+	} else {
+		return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
 	}
-	return status;
 }
 
 static libredxx_status libredxx_d2xx_rx_available(libredxx_opened_device* device, size_t* available)

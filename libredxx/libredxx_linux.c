@@ -298,7 +298,7 @@ libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size
 {
 	uint8_t* bBuffer = (uint8_t*)buffer;
 	libredxx_status status;
-    if (device->found.type == LIBREDXX_DEVICE_TYPE_D3XX) {
+	if (device->found.type == LIBREDXX_DEVICE_TYPE_D3XX) {
 		status = libredxx_d3xx_trigger_read(device, *buffer_size);
 		if (status != LIBREDXX_STATUS_SUCCESS) {
 			return status;
@@ -407,10 +407,8 @@ libredxx_status libredxx_write(libredxx_opened_device* device, void* buffer, siz
 		bulk.ep = 0x02;
 		bulk.len = *buffer_size;
 		bulk.data = buffer;
-		if (-1 == ioctl(device->handle, USBDEVFS_BULK, &bulk)) {
-			return LIBREDXX_STATUS_ERROR_SYS;
-		}
-		return LIBREDXX_STATUS_SUCCESS;
+		int r = ioctl(device->handle, USBDEVFS_BULK, &bulk);
+		return r == -1 ? LIBREDXX_STATUS_ERROR_SYS : LIBREDXX_STATUS_SUCCESS;
 	} else if (device->found.type == LIBREDXX_DEVICE_TYPE_FT260) {
 		const uint8_t report_id = bBuffer[0];
 		if (!report_id) {
