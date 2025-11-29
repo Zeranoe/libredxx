@@ -1,6 +1,6 @@
 if(WIN32)
 	add_library(libredxx libredxx_windows.c)
-	target_link_libraries(libredxx PRIVATE setupapi hid)
+	target_link_libraries(libredxx PRIVATE setupapi)
 elseif(APPLE)
 	add_library(libredxx libredxx_darwin.c)
 	find_library(IOKIT_FRAMEWORK IOKit REQUIRED)

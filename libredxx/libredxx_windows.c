@@ -50,11 +50,6 @@ struct libredxx_opened_device {
 	bool read_interrupted;
 };
 
-struct libredxx_guid_id {
-	libredxx_device_type type;
-	GUID guid;
-};
-
 static int32_t find_last_of(const wchar_t* str, uint32_t str_len, wchar_t needle)
 {
 	for (uint32_t i = str_len; i > 0; --i) {
@@ -67,24 +62,21 @@ static int32_t find_last_of(const wchar_t* str, uint32_t str_len, wchar_t needle
 
 libredxx_status libredxx_enumerate_interfaces(HDEVINFO dev_info, const libredxx_find_filter* filters, size_t filters_count, libredxx_found_device*** devices, size_t* devices_count)
 {
-	GUID hid_guid;
-	HidD_GetHidGuid(&hid_guid);
-	struct libredxx_guid_id guids_table[] = {
-		{LIBREDXX_DEVICE_TYPE_D2XX, {0x219D0508, 0x57A8, 0x4FF5, {0x97, 0xA1, 0xBD, 0x86, 0x58, 0x7C, 0x6C, 0x7E}}},
-		{LIBREDXX_DEVICE_TYPE_D3XX, {0xD1E8FE6A, 0xAB75, 0x4D9E, {0x97, 0xD2, 0x06, 0xFA, 0x22, 0xC7, 0x73, 0x6C}}},
-		{LIBREDXX_DEVICE_TYPE_FT260, hid_guid}
+	GUID guids[] = {
+		{0x219D0508, 0x57A8, 0x4FF5, {0x97, 0xA1, 0xBD, 0x86, 0x58, 0x7C, 0x6C, 0x7E}}, // D2XX
+		{0xD1E8FE6A, 0xAB75, 0x4D9E, {0x97, 0xD2, 0x06, 0xFA, 0x22, 0xC7, 0x73, 0x6C}}, // D3XX
+		GUID_DEVINTERFACE_HID,
 	};
 	size_t device_index = 0;
-	size_t guids_count = sizeof(guids_table) / sizeof(guids_table[0]);
+	size_t guids_count = sizeof(guids) / sizeof(guids[0]);
 	libredxx_found_device* private_devices = NULL;
 	for (size_t guid_index = 0; guid_index < guids_count; ++guid_index) {
-		struct libredxx_guid_id* guid_entry = &guids_table[guid_index];
-		GUID* guid = &guid_entry->guid;
+		GUID* guid = &guids[guid_index];
 		DWORD member_index = 0;
 		while (1) {
 			SP_DEVICE_INTERFACE_DATA ifd;
 			ifd.cbSize = sizeof(ifd);
-			if (!SetupDiEnumDeviceInterfaces(dev_info, NULL, guid, member_index++, &ifd)) {
+			if (!SetupDiEnumDeviceInterfaces(dev_info, NULL, guid, member_index, &ifd)) {
 				DWORD err = GetLastError();
 				if (err == ERROR_NO_MORE_ITEMS) {
 					break;
@@ -101,12 +93,12 @@ libredxx_status libredxx_enumerate_interfaces(HDEVINFO dev_info, const libredxx_
 			}
 			wchar_t* vid_start = wcsstr(detail->DevicePath, L"vid_");
 			if (!vid_start) {
-				continue;
+				return LIBREDXX_STATUS_ERROR_SYS;
 			}
 			vid_start += 4;
 			wchar_t* pid_start = wcsstr(detail->DevicePath, L"pid_");
 			if (!pid_start) {
-				continue;
+				return LIBREDXX_STATUS_ERROR_SYS;
 			}
 			pid_start += 4;
 			wchar_t vid_str[5] = {vid_start[0], vid_start[1], vid_start[2], vid_start[3], '\0'};
@@ -171,7 +163,6 @@ libredxx_status libredxx_enumerate_interfaces(HDEVINFO dev_info, const libredxx_
 					memset(device, 0, sizeof(libredxx_found_device));
 					device->id.vid = vid;
 					device->id.pid = pid;
-					device->type = guid_entry->type;
 					wcscpy_s(device->path, sizeof(device->path) / sizeof(device->path[0]), detail->DevicePath);
 					device->type = filter->type;
 					if (serial) {
@@ -180,6 +171,7 @@ libredxx_status libredxx_enumerate_interfaces(HDEVINFO dev_info, const libredxx_
 					break;
 				}
 			}
+			++member_index;
 		}
 	}
 	*devices_count = device_index;
@@ -283,12 +275,6 @@ libredxx_status libredxx_open_device(const libredxx_found_device* found, libredx
 		if (status != LIBREDXX_STATUS_SUCCESS) {
 			free(private_opened);
 			return status;
-		}
-	} else if (found->type == LIBREDXX_DEVICE_TYPE_FT260) {
-		// use 64 reports for input buffer
-		if (!HidD_SetNumInputBuffers(private_opened->handle, 64)) {
-			free(private_opened);
-			return LIBREDXX_STATUS_ERROR_SYS;
 		}
 	}
 	*opened = private_opened;
