@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <time.h>
 #include <string.h>
+#include <windows.h>
 #include "libredxx/libredxx.h"
 #include "ft260.h"
 
