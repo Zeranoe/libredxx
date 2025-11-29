@@ -67,7 +67,7 @@ int main(int argc, char** argv) {
 		return -1;
 	}
 
-	size_t read_size = strtol(argv[ARG_SIZE_POS], NULL, 16);
+	const size_t read_size = strtoul(argv[ARG_SIZE_POS], NULL, 16);
 	if (read_size > UINT8_MAX) {
 		printf("error: read size too large\n");
 		return -1;
@@ -113,8 +113,9 @@ int main(int argc, char** argv) {
 		}
 
 		// read loop
-		printf("======== Found device %llu read data ========\n", i);
-		while (read_size) {
+		printf("======== Found device %zu i2c data ========\n", i);
+		size_t rem = read_size;
+		while (rem) {
 			struct libredxx_ft260_in_i2c_read rep_i2c_read_in = {0};
 			size = sizeof(rep_i2c_read_in);
 			status = libredxx_read(device, &rep_i2c_read_in, &size, LIBREDXX_ENDPOINT_IO);
@@ -125,8 +126,9 @@ int main(int argc, char** argv) {
 			for (int j = 0; j < rep_i2c_read_in.length; ++j) {
 				printf("0x%X\n", rep_i2c_read_in.data[j]);
 			}
-			read_size -= rep_i2c_read_in.length;
+			rem -= rep_i2c_read_in.length;
 		}
+		printf("\n");
 		libredxx_close_device(device);
 	}
 	libredxx_free_found(found_devices);
