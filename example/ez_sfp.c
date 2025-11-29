@@ -1,9 +1,12 @@
 #include <stdio.h>
 #include <time.h>
 #include <string.h>
-#include <windows.h>
 #include "libredxx/libredxx.h"
 #include "ft260.h"
+
+#if defined(_WIN32)
+#include <windows.h>
+#endif
 
 #define MSA_SIZE 128
 
