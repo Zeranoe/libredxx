@@ -304,8 +304,9 @@ static libredxx_status libredxx_d3xx_trigger_read(libredxx_opened_device* device
 libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size_t* buffer_size, libredxx_endpoint endpoint)
 {
 	uint8_t* bBuffer = (uint8_t*)buffer;
+	libredxx_status status;
     if (device->found.type == LIBREDXX_DEVICE_TYPE_D3XX) {
-		libredxx_status status = libredxx_d3xx_trigger_read(device, *buffer_size);
+		status = libredxx_d3xx_trigger_read(device, *buffer_size);
 		if (status != LIBREDXX_STATUS_SUCCESS) {
 			return status;
 		}
