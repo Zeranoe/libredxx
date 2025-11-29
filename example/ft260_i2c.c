@@ -29,25 +29,33 @@
 #define I2C_MAX_ADDR ((1 << 7) - 1)
 
 #define MAX_WRITE_SIZE 256
-#define WRITE_DATA_ARG_START 5
 
+#define ARG_VID_POS 1
+#define ARG_PID_POS 2
+#define ARG_ADDR_POS 3
+#define ARG_RW_POS 4
+
+#define ARG_READ_WRITE_CTRL_POS 5
+#define ARG_READ_SIZE_POS 6
+
+#define ARG_START_WRITE_DATA 5
 
 int main(int argc, char** argv) {
 	if (argc < 6 || argc > (5 + MAX_WRITE_SIZE)) {
-		printf("usage: %s <vid> <pid> <addr> [<read> <size> | <write> <byte_1> <byte_2> ... <byte_%d>]\n", argv[0], MAX_WRITE_SIZE);
-		printf("example: %s 0403 6030 20 read 12\n", argv[0]);
+		printf("usage: %s <vid> <pid> <addr> [<read> <write_ctrl> <size> | <write> <byte_1> <byte_2> ... <byte_%d>]\n", argv[0], MAX_WRITE_SIZE);
+		printf("example: %s 0403 6030 50 read 1 128\n", argv[0]);
 		printf("example: %s 0403 6030 30 write 01 02 03\n", argv[0]);
 		return -1;
 	}
 
-	uint16_t vid_arg = (uint16_t)strtoul(argv[1], NULL, 16);
-	uint16_t pid_arg = (uint16_t)strtoul(argv[2], NULL, 16);
+	uint16_t vid = (uint16_t)strtoul(argv[ARG_VID_POS], NULL, 16);
+	uint16_t pid = (uint16_t)strtoul(argv[ARG_PID_POS], NULL, 16);
 	libredxx_found_device** found_devices = NULL;
 	size_t found_devices_count = 0;
 	libredxx_find_filter filters[] = {
 		{
 			LIBREDXX_DEVICE_TYPE_FT260,
-			{vid_arg, pid_arg}
+			{vid, pid}
 		}
 	};
 	size_t filters_count = 1;
@@ -61,27 +69,88 @@ int main(int argc, char** argv) {
 		return -1;
 	}
 
-	uint16_t addr_arg = (uint16_t)strtoul(argv[3], NULL, 16);
-	if (addr_arg > I2C_MAX_ADDR) {
+	uint16_t addr = (uint16_t)strtoul(argv[ARG_ADDR_POS], NULL, 16);
+	if (addr > I2C_MAX_ADDR) {
 		printf("error: invalid I2C address (must be 7-bit)\n");
 		return -1;
 	}
 
-	if (strcmp(argv[4], "read") == 0) {
-		for (size_t i = 0; i < found_devices_count; ++i) {
-			// TODO
+
+	libredxx_opened_device* device = NULL;
+
+	if (strcmp(argv[ARG_RW_POS], "read") == 0) {
+		size_t read_size = strtol(argv[ARG_READ_SIZE_POS], NULL, 16);
+		if (read_size > UINT8_MAX) {
+			printf("error: read size too large\n");
+			return -1;
 		}
-	} else if (strcmp(argv[4], "write") == 0) {
-		size_t write_size = argc - WRITE_DATA_ARG_START;
+		const int write_ctrl = !!strtol(argv[ARG_READ_WRITE_CTRL_POS], NULL, 16);
+		for (size_t i = 0; i < found_devices_count; ++i) {
+			status = libredxx_open_device(found_devices[i], &device);
+			if (status != LIBREDXX_STATUS_SUCCESS) {
+				printf("error: unable to open device: %d\n", status);
+				goto ERROR;
+			}
+			size_t size = 0;
+			if (write_ctrl) {
+				struct libredxx_ft260_out_i2c_write rep_i2c_write = {0};
+				size = sizeof(rep_i2c_write);
+				rep_i2c_write.report_id = 0xDE;
+				rep_i2c_write.slave_addr = addr;
+				rep_i2c_write.flags = 0x06; // START | STOP
+				rep_i2c_write.length = 1;
+				rep_i2c_write.data[0] = 0x00;
+				status = libredxx_write(device, &rep_i2c_write, &size, LIBREDXX_ENDPOINT_IO);
+				if (status != LIBREDXX_STATUS_SUCCESS) {
+					printf("error: failed to write control byte\n");
+					goto ERROR;
+				}
+			}
+
+			// request read
+			struct libredxx_ft260_out_i2c_read rep_i2c_read_out = {0};
+			size = sizeof(rep_i2c_read_out);
+			rep_i2c_read_out.report_id = 0xC2; // I2C Read Request
+			rep_i2c_read_out.slave_addr = addr;
+			rep_i2c_read_out.flags = 0x06; // START | STOP
+			rep_i2c_read_out.length = read_size;
+			status = libredxx_write(device, &rep_i2c_read_out, &size, LIBREDXX_ENDPOINT_IO);
+			if (status != LIBREDXX_STATUS_SUCCESS) {
+				printf("error: failed read request\n");
+				goto ERROR;
+			}
+
+			// read loop
+			printf("======== Found device %llu read data ========\n", i);
+			while (read_size) {
+				struct libredxx_ft260_in_i2c_read rep_i2c_read_in = {0};
+				size = sizeof(rep_i2c_read_in);
+				status = libredxx_read(device, &rep_i2c_read_in, &size, LIBREDXX_ENDPOINT_IO);
+				if (status != LIBREDXX_STATUS_SUCCESS) {
+					printf("error: failed to read data from device\n");
+					goto ERROR;
+				}
+				for (int j = 0; j < rep_i2c_read_in.length; ++j) {
+					printf("0x%X\n", rep_i2c_read_in.data[j]);
+				}
+				read_size -= rep_i2c_read_in.length;
+			}
+			libredxx_close_device(device);
+		}
+		libredxx_free_found(found_devices);
+		return 0;
+
+	} else if (strcmp(argv[ARG_RW_POS], "write") == 0) {
+		size_t write_size = argc - ARG_START_WRITE_DATA;
 		if (write_size == 0) {
 			printf("warning: no write data specified\n");
 			return -1;
 		}
 		uint8_t write_data[MAX_WRITE_SIZE];
 		for (int i = 0; i < write_size; ++i) {
-			uint16_t byte = (uint16_t)strtoul(argv[WRITE_DATA_ARG_START + i], NULL, 16);
+			uint16_t byte = (uint16_t)strtoul(argv[ARG_START_WRITE_DATA + i], NULL, 16);
 			if (byte > UINT8_MAX) {
-				printf("error: invalid data byte\n");
+				printf("error: invalid write data byte %d\n", i);
 				return -1;
 			}
 			write_data[i] = (uint8_t)byte;
@@ -93,4 +162,9 @@ int main(int argc, char** argv) {
 		printf("error: must specify read or write\n");
 		return -1;
 	}
+
+ERROR:
+	libredxx_close_device(device);
+	libredxx_free_found(found_devices);
+	return -1;
 }
