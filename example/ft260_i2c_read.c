@@ -82,7 +82,8 @@ int main(int argc, char** argv) {
 		status = libredxx_open_device(found_devices[i], &device);
 		if (status != LIBREDXX_STATUS_SUCCESS) {
 			printf("error: unable to open device: %d\n", status);
-			goto ERROR;
+			libredxx_free_found(found_devices);
+			return -1;
 		}
 		if (write_ctrl) {
 			struct libredxx_ft260_out_i2c_write rep_i2c_write = {0};
