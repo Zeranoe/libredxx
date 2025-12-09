@@ -23,6 +23,7 @@
 #include "libredxx.h"
 
 #include <stdlib.h>
+#include <stdio.h>
 
 #define WIN32_LEAN_AND_MEAN
 #define UNICODE
@@ -91,6 +92,10 @@ libredxx_status libredxx_enumerate_interfaces(HDEVINFO dev_info, const libredxx_
 			if (!SetupDiGetDeviceInterfaceDetailW(dev_info, &ifd, detail, sizeof(detail_buffer), NULL, &did)) {
 				return LIBREDXX_STATUS_ERROR_SYS;
 			}
+
+			char sbuf[2048] = {0};
+			sprintf(sbuf, "%ws", detail->DevicePath);
+
 			wchar_t* vid_start = wcsstr(detail->DevicePath, L"vid_");
 			if (!vid_start) {
 				continue;

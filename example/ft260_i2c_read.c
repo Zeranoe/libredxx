@@ -138,7 +138,7 @@ int main(int argc, char** argv) {
 			status = libredxx_write(device, &rep_i2c_write, &size, LIBREDXX_ENDPOINT_IO);
 			if (status != LIBREDXX_STATUS_SUCCESS) {
 				printf("error: failed to write control byte\n");
-				goto ERROR;
+				goto ERROR_EXIT;
 			}
 		}
 
@@ -152,7 +152,7 @@ int main(int argc, char** argv) {
 		status = libredxx_write(device, &rep_i2c_read_out, &size, LIBREDXX_ENDPOINT_IO);
 		if (status != LIBREDXX_STATUS_SUCCESS) {
 			printf("error: failed read request\n");
-			goto ERROR;
+			goto ERROR_EXIT;
 		}
 
 		// read loop
@@ -201,7 +201,7 @@ int main(int argc, char** argv) {
 	libredxx_free_found(found_devices);
 	return 0;
 
-ERROR:
+ERROR_EXIT:
 	libredxx_close_device(device);
 	libredxx_free_found(found_devices);
 	return -1;
