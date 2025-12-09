@@ -471,6 +471,7 @@ libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size
 			*buffer_size = bytes_returned;
 			return LIBREDXX_STATUS_SUCCESS;
 		} else if (endpoint == LIBREDXX_ENDPOINT_IO) {
+			device->read_interrupted = false;
 			libredxx_status ret = LIBREDXX_STATUS_SUCCESS;
 			OVERLAPPED overlapped = {0};
 			overlapped.hEvent = CreateEventW(NULL, true, false, NULL);
