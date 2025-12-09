@@ -22,6 +22,14 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
+#ifdef _WIN32
+#define _CRT_SECURE_NO_WARNINGS
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#else
+#include <pthread.h>
+#include <time.h>
+#endif
 #include "libredxx/libredxx.h"
 #include "ft260.h"
 
@@ -32,6 +40,40 @@
 #define ARG_ADDR_POS 3
 #define ARG_WRITE_CTRL_POS 4
 #define ARG_SIZE_POS 5
+
+struct read_thread_arg {
+    libredxx_opened_device* device;
+    uint8_t* rx;
+    size_t rx_size;
+    libredxx_status read_status;
+};
+
+#ifdef _WIN32
+static DWORD read_thread(void* varg)
+#else
+static void* read_thread(void* varg)
+#endif
+{
+    struct read_thread_arg* arg = (struct read_thread_arg*)varg;
+    arg->read_status = libredxx_read(arg->device, arg->rx, &arg->rx_size, LIBREDXX_ENDPOINT_IO);
+#ifdef _WIN32
+    return 0;
+#else
+    return NULL;
+#endif
+}
+
+static void sleep_ms(unsigned int ms)
+{
+#ifdef _WIN32
+    Sleep((DWORD)ms);
+#else
+    struct timespec ts;
+    ts.tv_sec = ms / 1000;
+    ts.tv_nsec = (ms % 1000) * 1000000;
+    nanosleep(&ts, NULL);
+#endif
+}
 
 int main(int argc, char** argv) {
 	if (argc != 6) {
@@ -118,12 +160,36 @@ int main(int argc, char** argv) {
 		size_t rem = read_size;
 		while (rem) {
 			struct libredxx_ft260_in_i2c_read rep_i2c_read_in = {0};
-			size = sizeof(rep_i2c_read_in);
-			status = libredxx_read(device, &rep_i2c_read_in, &size, LIBREDXX_ENDPOINT_IO);
-			if (status != LIBREDXX_STATUS_SUCCESS) {
-				printf("error: failed to read data from device\n");
-				goto ERROR;
+			struct read_thread_arg arg = {
+				.device = device,
+				.rx = (uint8_t*)&rep_i2c_read_in,
+				.rx_size = sizeof(rep_i2c_read_in)
+			};
+#ifdef _WIN32
+			HANDLE thread = CreateThread(NULL, 0, read_thread, &arg, 0, NULL);
+#else
+			pthread_t thread;
+			pthread_create(&thread, NULL, read_thread, &arg);
+#endif
+			sleep_ms(200); // let thread read
+			libredxx_interrupt(device);
+
+#ifdef _WIN32
+			WaitForMultipleObjects(1, &thread, TRUE, INFINITE);
+			CloseHandle(thread);
+#else
+			pthread_join(thread, NULL);
+#endif
+
+			if (arg.read_status == LIBREDXX_STATUS_ERROR_INTERRUPTED) {
+				printf("error: read timed out\n");
+				return -1;
 			}
+			if (arg.read_status != LIBREDXX_STATUS_SUCCESS) {
+				printf("error: read failed\n");
+				return -1;
+			}
+
 			for (int j = 0; j < rep_i2c_read_in.length; ++j) {
 				printf("0x%X\n", rep_i2c_read_in.data[j]);
 			}
