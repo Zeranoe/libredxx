@@ -23,7 +23,6 @@
 #include "libredxx.h"
 
 #include <stdlib.h>
-#include <stdio.h>
 
 #define WIN32_LEAN_AND_MEAN
 #define UNICODE
