@@ -206,10 +206,10 @@ libredxx_status libredxx_get_device_type(const libredxx_found_device* found, lib
 
 libredxx_status libredxx_open_device(const libredxx_found_device* found, libredxx_opened_device** opened)
 {
-    int handle = open(found->path, O_RDWR);
-    if (handle == -1) {
-        return LIBREDXX_STATUS_ERROR_SYS;
-    }
+	int handle = open(found->path, O_RDWR);
+	if (handle == -1) {
+		return LIBREDXX_STATUS_ERROR_SYS;
+	}
 	for (unsigned int i = 0; i < found->interface_count; ++i) {
 		if (ioctl(handle, USBDEVFS_CLAIMINTERFACE, &i) == -1) {
 			close(handle);
