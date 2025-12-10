@@ -359,7 +359,6 @@ libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size
             ctrl.bRequest = HID_REQ_GET_REPORT;
             ctrl.wValue = (uint16_t)((HID_REPORT_TYPE_FEATURE << 8) | report_id);
             ctrl.wIndex = LIBREDXX_FT260_INTERFACE;
-            ctrl.timeout = 1000; // ms
             ctrl.wLength = *buffer_size;
             ctrl.data = buffer;
             if (-1 == ioctl(device->handle, USBDEVFS_CONTROL, &ctrl)) {
@@ -402,7 +401,6 @@ libredxx_status libredxx_write(libredxx_opened_device* device, void* buffer, siz
 			ctrl.bRequest = HID_REQ_SET_REPORT;
 			ctrl.wValue = (uint16_t)((HID_REPORT_TYPE_FEATURE << 8) | report_id);
 			ctrl.wIndex = LIBREDXX_FT260_INTERFACE;
-			ctrl.timeout = 1000; // ms
 			ctrl.wLength = *buffer_size;
 			ctrl.data = buffer;
 			if (-1 == ioctl(device->handle, USBDEVFS_CONTROL, &ctrl)) {
