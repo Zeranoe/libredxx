@@ -49,7 +49,7 @@ static void* read_thread(void* varg)
 #endif
 {
 	struct read_thread_arg* arg = (struct read_thread_arg*)varg;
-	arg->read_status = libredxx_read(arg->device, arg->rx, &arg->rx_size, LIBREDXX_ENDPOINT_IO);
+	arg->read_status = libredxx_read(arg->device, arg->rx, &arg->rx_size, LIBREDXX_ENDPOINT_A);
 	#ifdef _WIN32
 	return 0;
 	#else
@@ -87,7 +87,7 @@ static void opened_device_scope(libredxx_opened_device* opened, char* serial_arg
 	pthread_create(&thread, NULL, read_thread, &arg);
 	#endif
 	sleep_ms(100); // let thread start
-	status = libredxx_write(opened, tx, &tx_len, LIBREDXX_ENDPOINT_IO);
+	status = libredxx_write(opened, tx, &tx_len, LIBREDXX_ENDPOINT_A);
 	if (status != LIBREDXX_STATUS_SUCCESS) {
 		printf("error: unable to write to device: %d\n", status);
 	}

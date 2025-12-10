@@ -55,7 +55,7 @@ static void* read_thread(void* varg)
 #endif
 {
     struct read_thread_arg* arg = (struct read_thread_arg*)varg;
-    arg->read_status = libredxx_read(arg->device, arg->rx, &arg->rx_size, LIBREDXX_ENDPOINT_IO);
+    arg->read_status = libredxx_read(arg->device, arg->rx, &arg->rx_size, LIBREDXX_ENDPOINT_A);
 #ifdef _WIN32
     return 0;
 #else
@@ -135,7 +135,7 @@ int main(int argc, char** argv) {
 			rep_i2c_write.flags = 0x06; // START | STOP
 			rep_i2c_write.length = 1;
 			rep_i2c_write.data[0] = 0x00;
-			status = libredxx_write(device, &rep_i2c_write, &size, LIBREDXX_ENDPOINT_IO);
+			status = libredxx_write(device, &rep_i2c_write, &size, LIBREDXX_ENDPOINT_A);
 			if (status != LIBREDXX_STATUS_SUCCESS) {
 				printf("error: failed to write control byte\n");
 				goto ERROR_EXIT;
@@ -149,7 +149,7 @@ int main(int argc, char** argv) {
 		rep_i2c_read_out.slave_addr = addr;
 		rep_i2c_read_out.flags = 0x06; // START | STOP
 		rep_i2c_read_out.length = read_size;
-		status = libredxx_write(device, &rep_i2c_read_out, &size, LIBREDXX_ENDPOINT_IO);
+		status = libredxx_write(device, &rep_i2c_read_out, &size, LIBREDXX_ENDPOINT_A);
 		if (status != LIBREDXX_STATUS_SUCCESS) {
 			printf("error: failed read request\n");
 			goto ERROR_EXIT;
