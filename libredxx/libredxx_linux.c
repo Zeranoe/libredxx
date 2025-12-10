@@ -21,6 +21,7 @@
  */
 
 #include "libredxx.h"
+#include "libredxx_ft260.h"
 
 #include <dirent.h>
 #include <sys/types.h>

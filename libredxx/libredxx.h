@@ -31,8 +31,6 @@
 extern "C" {
 #endif
 
-#define LIBREDXX_FT260_REPORT_SIZE 64
-
 enum libredxx_device_type {
 	LIBREDXX_DEVICE_TYPE_D2XX,
 	LIBREDXX_DEVICE_TYPE_D3XX,

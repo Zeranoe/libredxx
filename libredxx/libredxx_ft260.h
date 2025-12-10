@@ -22,7 +22,10 @@
 
 #ifndef LIBREDXX_LIBREDXX_FT260_H
 #define LIBREDXX_LIBREDXX_FT260_H
+
 #include <stdint.h>
+
+#define LIBREDXX_FT260_REPORT_SIZE 64
 
 /*
  * NOTE: not all reports are included. Consult the FT260 user guide.
