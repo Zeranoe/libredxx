@@ -400,7 +400,6 @@ static libredxx_status libredxx_d2xx_wait_rx(libredxx_opened_device* device, siz
 
 libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size_t* buffer_size, libredxx_endpoint endpoint)
 {
-	BYTE* bBuffer = (BYTE*)buffer;
 	if (device->found.type == LIBREDXX_DEVICE_TYPE_D2XX) {
 		if (endpoint == LIBREDXX_ENDPOINT_IO) {
 			libredxx_status status;
@@ -451,7 +450,7 @@ libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size
 		}
 	} else if (device->found.type == LIBREDXX_DEVICE_TYPE_FT260) {
 		if (endpoint == LIBREDXX_ENDPOINT_CONTROL) {
-			const BYTE report_id = bBuffer[0];
+			const BYTE report_id = ((BYTE*)buffer)[0];
 			if (!report_id || *buffer_size != LIBREDXX_FT260_REPORT_SIZE) {
 				return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
 			}
@@ -494,7 +493,6 @@ libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size
 
 libredxx_status libredxx_write(libredxx_opened_device* device, void* buffer, size_t* buffer_size, libredxx_endpoint endpoint)
 {
-	BYTE* bBuffer = (BYTE*)buffer;
 	if (device->found.type == LIBREDXX_DEVICE_TYPE_D2XX) {
 		if (endpoint == LIBREDXX_ENDPOINT_IO) {
 			if (!WriteFile(device->handle, buffer, (DWORD)*buffer_size, (DWORD*)buffer_size, NULL)) {
@@ -525,7 +523,7 @@ libredxx_status libredxx_write(libredxx_opened_device* device, void* buffer, siz
 			return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
 		}
 	} else if (device->found.type == LIBREDXX_DEVICE_TYPE_FT260) {
-		const BYTE report_id = bBuffer[0];
+		const BYTE report_id = ((BYTE*)buffer)[0];
 		if (!report_id) {
 			return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
 		}
