@@ -21,6 +21,7 @@
  */
 
 #include "libredxx.h"
+#include "libredxx_ft260.h"
 
 #include <dirent.h>
 #include <sys/types.h>
@@ -33,10 +34,17 @@
 #include <sys/ioctl.h>
 #include <stdlib.h>
 #include <poll.h>
+#include <linux/hid.h>
+#include <linux/hiddev.h>
+#include <errno.h>
 
 #define USBFS_PATH "/dev/bus/usb"
 #define SYSFS_DEVICES_PATH "/sys/bus/usb/devices"
 #define D2XX_HEADER_SIZE 2
+
+#define LIBREDXX_FT260_ENDPOINT_IN  0x81
+#define LIBREDXX_FT260_ENDPOINT_OUT 0x02
+#define LIBREDXX_FT260_INTERFACE    0
 
 struct libredxx_found_device {
 	char path[512];
@@ -49,7 +57,7 @@ struct libredxx_found_device {
 struct libredxx_opened_device {
 	libredxx_found_device found;
 	int handle;
-	int d3xx_pipes[2];
+	int pipes[2];
 	uint8_t* d2xx_rx_buffer;
 	size_t d2xx_rx_buffer_size;
 	bool read_interrupted;
@@ -110,6 +118,9 @@ libredxx_status libredxx_find_devices(const libredxx_find_filter* filters, size_
 	}
 	struct dirent* device_entry;
 	while ((device_entry = readdir(devices_dir)) != NULL) {
+		if (strcmp(device_entry->d_name, ".") == 0 || strcmp(device_entry->d_name, "..") == 0) {
+			continue;
+		}
 		char path[512];
 		snprintf(path, sizeof(path), SYSFS_DEVICES_PATH "/%s/descriptors", device_entry->d_name);
 		int fd;
@@ -212,13 +223,13 @@ libredxx_status libredxx_open_device(const libredxx_found_device* found, libredx
 	}
 	private_opened->found = *found;
 	private_opened->handle = handle;
-	if (found->type == LIBREDXX_DEVICE_TYPE_D3XX) {
-		if (pipe(private_opened->d3xx_pipes) == -1) {
+	if (found->type == LIBREDXX_DEVICE_TYPE_D3XX || found->type == LIBREDXX_DEVICE_TYPE_FT260) {
+		if (pipe(private_opened->pipes) == -1) {
 			free(private_opened);
 			close(handle);
 			return LIBREDXX_STATUS_ERROR_SYS;
 		}
-	} else {
+	} else if (found->type == LIBREDXX_DEVICE_TYPE_D2XX) {
 		// wMaxPacketSize
 		private_opened->d2xx_rx_buffer = malloc(512);
 		private_opened->d2xx_rx_buffer_size = 512;
@@ -230,10 +241,10 @@ libredxx_status libredxx_open_device(const libredxx_found_device* found, libredx
 libredxx_status libredxx_close_device(libredxx_opened_device* device)
 {
 	libredxx_interrupt(device);
-	if (device->found.type == LIBREDXX_DEVICE_TYPE_D3XX) {
-		close(device->d3xx_pipes[1]);
-		close(device->d3xx_pipes[0]);
-	} else {
+	if (device->found.type == LIBREDXX_DEVICE_TYPE_D3XX || device->found.type == LIBREDXX_DEVICE_TYPE_FT260) {
+		close(device->pipes[1]);
+		close(device->pipes[0]);
+	} else if (device->found.type == LIBREDXX_DEVICE_TYPE_D2XX) {
 		free(device->d2xx_rx_buffer);
 	}
 	for (unsigned int i = 0; i < device->found.interface_count; ++i) {
@@ -247,11 +258,13 @@ libredxx_status libredxx_close_device(libredxx_opened_device* device)
 libredxx_status libredxx_interrupt(libredxx_opened_device* device)
 {
 	device->read_interrupted = true;
-	if (device->found.type == LIBREDXX_DEVICE_TYPE_D3XX) {
+	if (device->found.type == LIBREDXX_DEVICE_TYPE_D3XX || device->found.type == LIBREDXX_DEVICE_TYPE_FT260) {
 		uint64_t one = 1;
-		if (write(device->d3xx_pipes[1], &one, sizeof(one)) != sizeof(one)) {
+		if (write(device->pipes[1], &one, sizeof(one)) != sizeof(one)) {
 			return LIBREDXX_STATUS_ERROR_SYS;
 		}
+	} else if (device->found.type != LIBREDXX_DEVICE_TYPE_D2XX) {
+		return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
 	}
 	return LIBREDXX_STATUS_SUCCESS;
 }
@@ -267,73 +280,153 @@ static libredxx_status libredxx_d3xx_trigger_read(libredxx_opened_device* device
 	return ioctl(device->handle, USBDEVFS_BULK, &bulk) == -1 ? LIBREDXX_STATUS_ERROR_SYS : LIBREDXX_STATUS_SUCCESS;
 }
 
-libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size_t* buffer_size)
+static libredxx_status libredxx_read_urb_poll(libredxx_opened_device* device, uint8_t endpoint, void* buffer, size_t* buffer_size)
+{
+	device->read_interrupted = false;
+
+	struct usbdevfs_urb urb = {0};
+	urb.type = USBDEVFS_URB_TYPE_BULK;
+	urb.endpoint = endpoint;
+	urb.buffer = buffer;
+	urb.buffer_length = *buffer_size;
+
+	if (ioctl(device->handle, USBDEVFS_SUBMITURB, &urb) != 0) {
+		return LIBREDXX_STATUS_ERROR_SYS;
+	}
+	struct pollfd fds[2] = {0};
+	fds[0].fd = device->handle;
+	fds[0].events = POLLOUT;
+	// for int
+	fds[1].fd = device->pipes[0];
+	fds[1].events = POLLIN;
+	if (poll(fds, 2, -1) < 0) {
+		return LIBREDXX_STATUS_ERROR_SYS;
+	}
+	if (device->read_interrupted) {
+		return LIBREDXX_STATUS_ERROR_INTERRUPTED;
+	}
+	if (ioctl(device->handle, USBDEVFS_REAPURB, &urb) != 0) {
+		return LIBREDXX_STATUS_ERROR_SYS;
+	}
+	*buffer_size = urb.actual_length;
+	return LIBREDXX_STATUS_SUCCESS;
+}
+
+libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size_t* buffer_size, libredxx_endpoint endpoint)
 {
 	libredxx_status status;
 	if (device->found.type == LIBREDXX_DEVICE_TYPE_D3XX) {
-		status = libredxx_d3xx_trigger_read(device, *buffer_size);
-		if (status != LIBREDXX_STATUS_SUCCESS) {
-			return status;
-		}
-
-		struct usbdevfs_urb urb = {0};
-		urb.type = USBDEVFS_URB_TYPE_BULK;
-		urb.endpoint = 0x82;
-		urb.buffer = buffer;
-		urb.buffer_length = *buffer_size;
-
-		if (ioctl(device->handle, USBDEVFS_SUBMITURB, &urb) != 0) {
-			return LIBREDXX_STATUS_ERROR_SYS;
-		}
-		struct pollfd fds[2] = {0};
-		fds[0].fd = device->handle;
-		fds[0].events = POLLOUT;
-		// for int
-		fds[1].fd = device->d3xx_pipes[0];
-		fds[1].events = POLLIN;
-		if (poll(fds, 2, -1) < 0) {
-			return LIBREDXX_STATUS_ERROR_SYS;
-		}
-
-		if (device->read_interrupted) {
-			return LIBREDXX_STATUS_ERROR_INTERRUPTED;
-		}
-
-		if (ioctl(device->handle, USBDEVFS_REAPURB, &urb) != 0) {
-			return LIBREDXX_STATUS_ERROR_SYS;
-		}
-
-		*buffer_size = urb.actual_length;
-		return LIBREDXX_STATUS_SUCCESS;
-	} else {
-		struct usbdevfs_bulktransfer bulk = {0};
-		bulk.ep = 0x81;
-		bulk.len = device->d2xx_rx_buffer_size;
-		bulk.data = device->d2xx_rx_buffer;
-		device->read_interrupted = false;
-		while (true) {
-			int r = ioctl(device->handle, USBDEVFS_BULK, &bulk);
-			if (r == -1) {
-				return LIBREDXX_STATUS_ERROR_SYS;
+		if (endpoint == LIBREDXX_ENDPOINT_A) {
+			status = libredxx_d3xx_trigger_read(device, *buffer_size);
+			if (status != LIBREDXX_STATUS_SUCCESS) {
+				return status;
 			}
-			if (r > D2XX_HEADER_SIZE) {
-				*buffer_size = r - D2XX_HEADER_SIZE;
-				memcpy(buffer, &device->d2xx_rx_buffer[2], *buffer_size);
-				return LIBREDXX_STATUS_SUCCESS;
-			}
-			if (device->read_interrupted) {
-				return LIBREDXX_STATUS_ERROR_INTERRUPTED;
-			}
+			return libredxx_read_urb_poll(device, 0x82, buffer, buffer_size);
+		} else {
+			return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
 		}
-	}
+    } else if (device->found.type == LIBREDXX_DEVICE_TYPE_D2XX) {
+    	if (endpoint == LIBREDXX_ENDPOINT_A) {
+    		struct usbdevfs_bulktransfer bulk = {0};
+    		bulk.ep = 0x81;
+    		bulk.len = device->d2xx_rx_buffer_size;
+    		bulk.data = device->d2xx_rx_buffer;
+    		device->read_interrupted = false;
+    		while (true) {
+    			int r = ioctl(device->handle, USBDEVFS_BULK, &bulk);
+    			if (r == -1) {
+    				return LIBREDXX_STATUS_ERROR_SYS;
+    			}
+    			if (r > D2XX_HEADER_SIZE) {
+    				*buffer_size = r - D2XX_HEADER_SIZE;
+    				memcpy(buffer, &device->d2xx_rx_buffer[2], *buffer_size);
+    				return LIBREDXX_STATUS_SUCCESS;
+    			}
+    			if (device->read_interrupted) {
+    				return LIBREDXX_STATUS_ERROR_INTERRUPTED;
+    			}
+    		}
+    	} else {
+    		return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
+    	}
+    } else if (device->found.type == LIBREDXX_DEVICE_TYPE_FT260) {
+        if (endpoint == LIBREDXX_ENDPOINT_A) {
+            return libredxx_read_urb_poll(device, LIBREDXX_FT260_ENDPOINT_IN, buffer, buffer_size);
+        } else if (endpoint == LIBREDXX_ENDPOINT_B) {
+        	if (*buffer_size != LIBREDXX_FT260_REPORT_SIZE) {
+        		return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
+        	}
+        	const uint8_t report_id = ((uint8_t*)buffer)[0];
+        	if (!report_id) {
+        		return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
+        	}
+        	struct usbdevfs_ctrltransfer ctrl = {0};
+        	ctrl.bRequestType = USB_DIR_IN | USB_TYPE_CLASS | USB_RECIP_INTERFACE;
+        	ctrl.bRequest = HID_REQ_GET_REPORT;
+        	ctrl.wValue = (uint16_t)((HID_REPORT_TYPE_FEATURE << 8) | report_id);
+        	ctrl.wIndex = LIBREDXX_FT260_INTERFACE;
+        	ctrl.wLength = *buffer_size;
+        	ctrl.data = buffer;
+        	if (-1 == ioctl(device->handle, USBDEVFS_CONTROL, &ctrl)) {
+        		return LIBREDXX_STATUS_ERROR_SYS;
+        	}
+        	return LIBREDXX_STATUS_SUCCESS;
+        } else {
+            return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
+        }
+    } else {
+        return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
+    }
 }
 
-libredxx_status libredxx_write(libredxx_opened_device* device, void* buffer, size_t* buffer_size)
-{
-	struct usbdevfs_bulktransfer bulk = {0};
-	bulk.ep = 0x02;
-	bulk.len = *buffer_size;
-	bulk.data = buffer;
-	int r = ioctl(device->handle, USBDEVFS_BULK, &bulk);
-	return r == -1 ? LIBREDXX_STATUS_ERROR_SYS : LIBREDXX_STATUS_SUCCESS;
+libredxx_status libredxx_write(libredxx_opened_device* device, void* buffer, size_t* buffer_size, libredxx_endpoint endpoint) {
+	if (device->found.type == LIBREDXX_DEVICE_TYPE_D2XX || device->found.type == LIBREDXX_DEVICE_TYPE_D3XX) {
+		if (endpoint == LIBREDXX_ENDPOINT_A) {
+			struct usbdevfs_bulktransfer bulk = {0};
+			bulk.ep = 0x02;
+			bulk.len = *buffer_size;
+			bulk.data = buffer;
+			int r = ioctl(device->handle, USBDEVFS_BULK, &bulk);
+			return r == -1 ? LIBREDXX_STATUS_ERROR_SYS : LIBREDXX_STATUS_SUCCESS;
+		} else {
+			return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
+		}
+	} else if (device->found.type == LIBREDXX_DEVICE_TYPE_FT260) {
+		if (*buffer_size == 0) {
+			return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT; // require report ID
+		}
+		const uint8_t report_id = ((uint8_t*)buffer)[0];
+		if (!report_id) {
+			return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
+		}
+		if (endpoint == LIBREDXX_ENDPOINT_A) {
+			struct usbdevfs_bulktransfer bulk = {0};
+			bulk.ep = LIBREDXX_FT260_ENDPOINT_OUT;
+			bulk.len = (int)*buffer_size;
+			bulk.data = buffer;
+			if (-1 == ioctl(device->handle, USBDEVFS_BULK, &bulk)) {
+				return LIBREDXX_STATUS_ERROR_SYS;
+			}
+			return LIBREDXX_STATUS_SUCCESS;
+		} else if (endpoint == LIBREDXX_ENDPOINT_B) {
+			if (*buffer_size != LIBREDXX_FT260_REPORT_SIZE) {
+				return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
+			}
+			struct usbdevfs_ctrltransfer ctrl = {0};
+			ctrl.bRequestType = USB_DIR_OUT | USB_TYPE_CLASS | USB_RECIP_INTERFACE;
+			ctrl.bRequest = HID_REQ_SET_REPORT;
+			ctrl.wValue = (uint16_t)((HID_REPORT_TYPE_FEATURE << 8) | report_id);
+			ctrl.wIndex = LIBREDXX_FT260_INTERFACE;
+			ctrl.wLength = *buffer_size;
+			ctrl.data = buffer;
+			if (-1 == ioctl(device->handle, USBDEVFS_CONTROL, &ctrl)) {
+				return LIBREDXX_STATUS_ERROR_SYS;
+			}
+			return LIBREDXX_STATUS_SUCCESS;
+		} else {
+			return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
+		}
+	} else {
+		return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
+	}
 }

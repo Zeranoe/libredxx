@@ -1,0 +1,5 @@
+UseTab: Always
+BreakBeforeBraces: Attach
+IndentWidth: 4
+TabWidth: 4
+ContinuationIndentWidth: 4

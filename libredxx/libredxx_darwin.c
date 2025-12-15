@@ -241,7 +241,7 @@ static libredxx_status libredxx_d3xx_trigger_read(libredxx_opened_device* device
 	return (*interface)->WritePipe(interface, 0x01, data, sizeof(data)) == kIOReturnSuccess ? LIBREDXX_STATUS_SUCCESS : LIBREDXX_STATUS_ERROR_SYS;
 }
 
-libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size_t* buffer_size)
+libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size_t* buffer_size, libredxx_endpoint endpoint)
 {
 	if (device->found.type == LIBREDXX_DEVICE_TYPE_D2XX) {
 		size_t headered_buffer_size = *buffer_size + D2XX_HEADER_SIZE;
@@ -283,7 +283,7 @@ libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size
 	}
 }
 
-libredxx_status libredxx_write(libredxx_opened_device* device, void* buffer, size_t* buffer_size)
+libredxx_status libredxx_write(libredxx_opened_device* device, void* buffer, size_t* buffer_size, libredxx_endpoint endpoint)
 {
 	size_t interface_index;
 	uint8_t pipe;

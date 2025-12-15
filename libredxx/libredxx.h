@@ -34,6 +34,7 @@ extern "C" {
 enum libredxx_device_type {
 	LIBREDXX_DEVICE_TYPE_D2XX,
 	LIBREDXX_DEVICE_TYPE_D3XX,
+	LIBREDXX_DEVICE_TYPE_FT260,
 };
 typedef enum libredxx_device_type libredxx_device_type;
 
@@ -64,6 +65,12 @@ enum libredxx_status {
 };
 typedef enum libredxx_status libredxx_status;
 
+enum libredxx_endpoint {
+	LIBREDXX_ENDPOINT_A,
+	LIBREDXX_ENDPOINT_B,
+};
+typedef enum libredxx_endpoint libredxx_endpoint;
+
 typedef struct libredxx_found_device libredxx_found_device;
 
 typedef struct libredxx_opened_device libredxx_opened_device;
@@ -81,8 +88,8 @@ libredxx_status libredxx_close_device(libredxx_opened_device* device);
 
 libredxx_status libredxx_interrupt(libredxx_opened_device* device);
 
-libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size_t* buffer_size);
-libredxx_status libredxx_write(libredxx_opened_device* device, void* buffer, size_t* buffer_size);
+libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size_t* buffer_size, libredxx_endpoint endpoint);
+libredxx_status libredxx_write(libredxx_opened_device* device, void* buffer, size_t* buffer_size, libredxx_endpoint endpoint);
 
 #ifdef __cplusplus
 }
