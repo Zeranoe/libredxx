@@ -245,6 +245,40 @@ static libredxx_status libredxx_d3xx_set_timeout(libredxx_opened_device* device,
 	return LIBREDXX_STATUS_SUCCESS;
 }
 
+static libredxx_status libredxx_d2xx_init_event(libredxx_opened_device* device)
+{
+	HANDLE event = CreateEventW(NULL, false, false, NULL);
+	if (!event) {
+		return LIBREDXX_STATUS_ERROR_SYS;
+	}
+	uint8_t* device_addr_bytes = (uint8_t*)&device;
+	uint8_t* rx_event_addr_bytes = (uint8_t*)&event;
+	uint8_t req[16] = {
+		device_addr_bytes[0],
+		device_addr_bytes[1],
+		device_addr_bytes[2],
+		device_addr_bytes[3],
+		0x01, // event id
+		0x00,
+		0x00,
+		0x00,
+		rx_event_addr_bytes[0],
+		rx_event_addr_bytes[1],
+		rx_event_addr_bytes[2],
+		rx_event_addr_bytes[3],
+		rx_event_addr_bytes[4],
+		rx_event_addr_bytes[5],
+		rx_event_addr_bytes[6],
+		rx_event_addr_bytes[7]
+	};
+	if (!DeviceIoControl(device->handle, 0x0022208C, &req, sizeof(req), NULL, 0, NULL, NULL)) {
+		CloseHandle(event);
+		return LIBREDXX_STATUS_ERROR_SYS;
+	}
+	device->d2xx_read_event = event;
+	return LIBREDXX_STATUS_SUCCESS;
+}
+
 libredxx_status libredxx_open_device(const libredxx_found_device* found, libredxx_opened_device** opened)
 {
 	DWORD create_flags = found->type == LIBREDXX_DEVICE_TYPE_D2XX ? 0 : FILE_FLAG_OVERLAPPED | FILE_ATTRIBUTE_NORMAL;
@@ -274,6 +308,12 @@ libredxx_status libredxx_open_device(const libredxx_found_device* found, libredx
 			free(private_opened);
 			return status;
 		}
+	} else if (found->type == LIBREDXX_DEVICE_TYPE_D2XX) {
+		libredxx_status status = libredxx_d2xx_init_event(private_opened);
+		if (status != LIBREDXX_STATUS_SUCCESS) {
+			free(private_opened);
+			return status;
+		}
 	}
 	*opened = private_opened;
 	return LIBREDXX_STATUS_SUCCESS;
@@ -282,6 +322,12 @@ libredxx_status libredxx_open_device(const libredxx_found_device* found, libredx
 libredxx_status libredxx_close_device(libredxx_opened_device* device)
 {
 	libredxx_interrupt(device);
+	if (device->found.type == LIBREDXX_DEVICE_TYPE_D2XX) {
+		if (device->d2xx_read_event) {
+			CloseHandle(device->d2xx_read_event);
+			device->d2xx_read_event = NULL;
+		}
+	}
 	CloseHandle(device->handle);
 	device->handle = NULL;
 	free(device);
@@ -354,66 +400,28 @@ static libredxx_status libredxx_d2xx_rx_available(libredxx_opened_device* device
 	return LIBREDXX_STATUS_SUCCESS;
 }
 
-static libredxx_status libredxx_d2xx_wait_rx(libredxx_opened_device* device, size_t* available)
-{
-	libredxx_status ret = LIBREDXX_STATUS_SUCCESS;
-	device->d2xx_read_event = CreateEventW(NULL, false, false, NULL);
-	uint8_t* device_addr_bytes = (uint8_t*)&device;
-	uint8_t* rx_event_addr_bytes = (uint8_t*)&device->d2xx_read_event;
-	uint8_t req[16] = {
-		device_addr_bytes[0],
-		device_addr_bytes[1],
-		device_addr_bytes[2],
-		device_addr_bytes[3],
-		0x01, // event id
-		0x00,
-		0x00,
-		0x00,
-		rx_event_addr_bytes[0],
-		rx_event_addr_bytes[1],
-		rx_event_addr_bytes[2],
-		rx_event_addr_bytes[3],
-		rx_event_addr_bytes[4],
-		rx_event_addr_bytes[5],
-		rx_event_addr_bytes[6],
-		rx_event_addr_bytes[7]
-	};
-	if (!DeviceIoControl(device->handle, 0x0022208C, &req, sizeof(req), NULL, 0, NULL, NULL)) {
-		ret = LIBREDXX_STATUS_ERROR_SYS;
-	} else {
-		// Now that the event is registered, we can check if there's any pending data. If we check before registering the event, we could miss the event
-		ret = libredxx_d2xx_rx_available(device, available);
-		if (ret == LIBREDXX_STATUS_SUCCESS && *available == 0) {
-			device->read_interrupted = false;
-			if (WaitForSingleObject(device->d2xx_read_event, INFINITE) != WAIT_OBJECT_0) {
-				ret = LIBREDXX_STATUS_ERROR_SYS;
-			} else if (device->read_interrupted) {
-				ret = LIBREDXX_STATUS_ERROR_INTERRUPTED;
-			} else {
-				ret = libredxx_d2xx_rx_available(device, available);
-			}
-		}
-	}
-	device->d2xx_read_event = NULL;
-	CloseHandle(device->d2xx_read_event);
-	return ret;
-}
-
 libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size_t* buffer_size, libredxx_endpoint endpoint)
 {
 	if (device->found.type == LIBREDXX_DEVICE_TYPE_D2XX) {
 		if (endpoint == LIBREDXX_ENDPOINT_A) {
-			libredxx_status status;
-			size_t available;
-			status = libredxx_d2xx_wait_rx(device, &available);
-			if (status != LIBREDXX_STATUS_SUCCESS) {
-				return status;
-			}
+			size_t available = 0;
+			do {
+				WaitForSingleObject(device->d2xx_read_event, INFINITE);
+				if (device->read_interrupted) {
+					return LIBREDXX_STATUS_ERROR_INTERRUPTED;
+				}
+				libredxx_status status = libredxx_d2xx_rx_available(device, &available);
+				if (status != LIBREDXX_STATUS_SUCCESS) {
+					return status;
+				}
+			} while (available == 0);
 
-			*buffer_size = min(available, *buffer_size);
-			if (!ReadFile(device->handle, buffer, (DWORD)*buffer_size, (DWORD*)buffer_size, NULL)) {
+			DWORD to_read = (DWORD)min(available, *buffer_size);
+			DWORD read;
+			if (!ReadFile(device->handle, (uint8_t*)buffer, to_read, &read, NULL)) {
 				return LIBREDXX_STATUS_ERROR_SYS;
 			}
+			*buffer_size = read;
 			return LIBREDXX_STATUS_SUCCESS;
 		} else {
 			return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
@@ -444,7 +452,6 @@ libredxx_status libredxx_read(libredxx_opened_device* device, void* buffer, size
 				}
 			}
 			CloseHandle(overlapped.hEvent);
-			device->d2xx_read_event = NULL;
 			return ret;
 		} else {
 			return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
@@ -497,9 +504,11 @@ libredxx_status libredxx_write(libredxx_opened_device* device, void* buffer, siz
 {
 	if (device->found.type == LIBREDXX_DEVICE_TYPE_D2XX) {
 		if (endpoint == LIBREDXX_ENDPOINT_A) {
-			if (!WriteFile(device->handle, buffer, (DWORD)*buffer_size, (DWORD*)buffer_size, NULL)) {
+			DWORD written = 0;
+			if (!WriteFile(device->handle, buffer, (DWORD)*buffer_size, &written, NULL)) {
 				return LIBREDXX_STATUS_ERROR_SYS;
 			}
+			*buffer_size = written;
 			return LIBREDXX_STATUS_SUCCESS;
 		} else {
 			return LIBREDXX_STATUS_ERROR_INVALID_ARGUMENT;
