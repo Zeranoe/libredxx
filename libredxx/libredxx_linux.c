@@ -125,6 +125,19 @@ static size_t libredxx_parse_endpoint_descriptor(const uint8_t* data, libredxx_f
 			default:
 				return descriptor->bLength; // unknown endpoint, skip
 		}
+	} else if (device->type == LIBREDXX_DEVICE_TYPE_FT260) {
+		switch (descriptor->bEndpointAddress) {
+			case LIBREDXX_FT260_ENDPOINT_OUT:
+				endpoint = &device->endpoint_a.out;
+				break;
+			case LIBREDXX_FT260_ENDPOINT_IN:
+				endpoint = &device->endpoint_a.in;
+				break;
+			default:
+				return descriptor->bLength; // unknown endpoint, skip
+		}
+	} else {
+		return descriptor->bLength; // unknown device type, skip
 	}
 	endpoint->address = descriptor->bEndpointAddress;
 	endpoint->max_packet_size = descriptor->wMaxPacketSize;
