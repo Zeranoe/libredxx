@@ -10,7 +10,7 @@ else()
 	add_library(libredxx libredxx_linux.c)
 endif()
 
-set_target_properties(libredxx PROPERTIES PUBLIC_HEADER ${CMAKE_CURRENT_SOURCE_DIR}/libredxx.h PREFIX "" POSITION_INDEPENDENT_CODE ON)
+set_target_properties(libredxx PROPERTIES PUBLIC_HEADER "${CMAKE_CURRENT_SOURCE_DIR}/libredxx.h;${CMAKE_CURRENT_SOURCE_DIR}/libredxx_ft260.h" PREFIX "" POSITION_INDEPENDENT_CODE ON)
 
 # warnings
 if(MSVC)
